@@ -59,6 +59,18 @@ bun scripts/bake-stats.ts path/to/blueprints          # Animated Java の .ajblu
 
 アニメごとの詳しい結果は `--out` に指定したファイル（既定は OS の一時フォルダ）に JSON で保存する。
 
+### イージングの確認
+
+`scripts/easing-check.ts` は、起動中の検証用 Blockbench でイージング付きの合成リグを開き、次を確かめる。プラグインを `install` してから実行する。
+
+- linear の区間に当てた組み込み 30 種と保存したベジェの値が関数の値と一致し、次の区間は変わらないこと。キーフレームを動かしても形が変わらないこと
+- catmullrom と bezier の区間で、行き過ぎるイージングが例外を出さないこと
+- 標準のベジェへの変換：変換しない場合は何も変えないこと、変換しなかった区間の値が変わらないこと、Undo・Redo と、保存して開き直したときに値が変わらないこと
+
+```sh
+bun scripts/easing-check.ts
+```
+
 ## ライセンス
 
 MIT

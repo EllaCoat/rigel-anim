@@ -1,0 +1,13 @@
+{
+	"name": "rigel-anim",
+	"version": "0.0.0",
+	"private": true,
+	"description": "Blockbench plugin: export display-entity animations for Minecraft Java Edition 1.20.4 and 26.3.",
+	"type": "module",
+	"packageManager": "bun@1.4.2",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/EllaCoat/rigel-anim.git"
+	}
+}

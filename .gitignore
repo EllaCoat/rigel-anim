@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.test-logs/
+*.log
+
+# Design notes and agent documents stay local.
+docs/
+*.md
+!README.md

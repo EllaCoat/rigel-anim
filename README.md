@@ -36,6 +36,20 @@ bun scripts/dev-bb.ts eval "return Plugins.registered.rigel?.version"
 bun scripts/dev-bb.ts stop       # 保存せずに終了する
 ```
 
+### 焼き込みの確認と書き込み数の集計
+
+`scripts/bake-stats.ts` は、起動中の検証用 Blockbench でリグのアニメを tick ごとの値に焼き込み、次の値を表にする。プラグインを `install` してから実行する。
+
+- display entity への書き込み数：毎 tick 全 Bone に書く場合、値が変わった Bone だけに書く場合、補間で再現できる tick を省く場合（許容誤差 3 段階）
+- 焼き込んだ値と Blockbench のプレビューの差、量子化の誤差、tick の中間で補間された姿勢のずれ
+
+```sh
+bun scripts/bake-stats.ts --synthetic                 # 補間・せん断・拡大 0・ミラーを含む合成リグ
+bun scripts/bake-stats.ts path/to/blueprints          # Animated Java の .ajblueprint（ファイルかフォルダ）
+```
+
+アニメごとの詳しい結果は `--out` に指定したファイル（既定は OS の一時フォルダ）に JSON で保存する。
+
 ## ライセンス
 
 MIT

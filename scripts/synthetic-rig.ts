@@ -1,7 +1,7 @@
 // A small rig whose animations cover what baking has to handle: catmullrom, bezier, step and linear
 // keyframes; shear (children turning under unevenly scaled parents, with and without two equal scale
-// axes); zero scale; mirroring; a bone without cubes; and a 'once' animation whose length is not a
-// whole number of ticks.
+// axes); zero scale; mirroring; a bone without cubes; a 'once' animation whose length is not a
+// whole number of ticks; and eased segments, overshooting ones included.
 let next = 0
 const id = () => `00000000-0000-4000-8000-${String(++next).padStart(12, '0')}`
 
@@ -21,6 +21,8 @@ function group(name: string, origin: V, cube?: [V, V], children: object[] = []) 
 function key(channel: string, time: number, [x, y, z]: V, interpolation = 'linear', extra: object = {}) {
 	return { channel, data_points: [{ x, y, z }], uuid: id(), time, color: -1, interpolation, ...extra }
 }
+
+const eased = (family: string, mode: string) => ({ rigel_easing: { name: `${family} ${mode}`, curve: { type: 'function', family, mode } } })
 
 function bezier(time: number, value: V, left: V, right: V) {
 	return key('rotation', time, value, 'bezier', {
@@ -82,6 +84,12 @@ export function syntheticRig() {
 			animation('hide', 'hold', 1, {
 				tail: [key('scale', 0, [1, 1, 1]), key('scale', 0.5, [0, 0, 0]), key('scale', 1, [1, 1, 1])],
 				arm: [key('scale', 0, [1, 1, 1]), key('scale', 1, [-1, 1, 1])],
+			}, bones),
+			animation('eased', 'loop', 2, {
+				body: [key('rotation', 0, [0, 0, 0], 'linear', eased('back', 'out')), key('rotation', 1, [0, 90, 0], 'linear', eased('elastic', 'inOut')), key('rotation', 2, [0, 0, 0])],
+				arm: [key('rotation', 0, [0, 0, 0], 'catmullrom', eased('sine', 'inOut')), key('rotation', 0.7, [0, 0, -70], 'catmullrom', eased('back', 'in')), key('rotation', 1.4, [30, 0, -20], 'catmullrom'), key('rotation', 2, [0, 0, 0], 'catmullrom')],
+				hand: [key('position', 0, [0, 0, 0], 'linear', eased('bounce', 'out')), key('position', 1, [0, 3, 0]), key('position', 2, [0, 0, 0])],
+				tail: [key('scale', 0, [1, 1, 1], 'linear', { rigel_easing: { name: 'pop', curve: { type: 'bezier', x1: 0.3, y1: 1.6, x2: 0.6, y2: 1 } } }), key('scale', 2, [1.5, 1.5, 1.5])],
 			}, bones),
 			animation('once', 'once', 1.03, {
 				body: [key('position', 0, [0, 0, 0]), key('position', 1.03, [0, 0, 8])],

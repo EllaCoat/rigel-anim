@@ -7,6 +7,15 @@ Blockbench プラグイン。Blockbench で作ったモデルとアニメーシ�
 
 開発初期で、まだ使える状態ではない。
 
+## イージング
+
+rigel のモデル形式のプロジェクトでは、キーフレームの右クリックメニュー「イージング」から、そのキーフレームで始まる区間にイージングを当てられる。キーフレームの補間方式（linear・catmullrom・bezier）はそのままで、区間の中の進み方だけが変わる。
+
+- 組み込み：sine・quad・cubic・quart・quint・expo・circ・back・elastic・bounce の In・Out・InOut（30 種）
+- 行き過ぎ（back・elastic）：linear の区間では直線の先へ、catmullrom の区間では隣の区間の曲線の上へ行き過ぎる。bezier の区間と、前後にキーフレームがない catmullrom の端では、Blockbench が曲線を延ばせないので端の値で止まる
+- 「プリセットを管理…」：ベジェの形（CSS の `cubic-bezier()` と同じ 4 つの値）や、back の行き過ぎの量・elastic の振幅と周期を変えた関数をプリセットとして保存する。保存先はこの PC の Blockbench で、JSON で書き出して別の PC で読み込める。当てたキーフレームには形そのものが写るので、プロジェクトだけで同じ動きを再生でき、後でプリセットを編集しても当て済みのキーフレームは変わらない
+- 「標準のベジェへ変換」：イージングを当てた区間を、Blockbench のベジェのハンドルを持つ 1 本の曲線に近似して置き換え、グラフエディタで形を直せるようにする。区間の両端のキーフレームは bezier になり、補間が変わる隣の linear・catmullrom の区間も同じ形のハンドルで bezier に置き換える。step の区間や、隣の区間の行き過ぎるイージング（back・elastic など）の形が変わってしまう場合は変換しない
+
 ## 由来
 
 [Animated Java](https://github.com/Animated-Java/animated-java) に着想を得た独立実装。Animated Java のコードやテンプレートは含まない。
@@ -49,6 +58,18 @@ bun scripts/bake-stats.ts path/to/blueprints          # Animated Java の .ajblu
 ```
 
 アニメごとの詳しい結果は `--out` に指定したファイル（既定は OS の一時フォルダ）に JSON で保存する。
+
+### イージングの確認
+
+`scripts/easing-check.ts` は、起動中の検証用 Blockbench でイージング付きの合成リグを開き、次を確かめる。プラグインを `install` してから実行する。
+
+- linear の区間に当てた組み込み 30 種と保存したベジェの値が関数の値と一致し、次の区間は変わらないこと。キーフレームを動かしても形が変わらないこと
+- catmullrom と bezier の区間で、行き過ぎるイージングが例外を出さないこと
+- 標準のベジェへの変換：変換しない場合は何も変えないこと、変換しなかった区間の値が変わらないこと、Undo・Redo と、保存して開き直したときに値が変わらないこと
+
+```sh
+bun scripts/easing-check.ts
+```
 
 ## ライセンス
 

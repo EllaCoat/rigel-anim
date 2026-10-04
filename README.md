@@ -7,6 +7,14 @@ Blockbench プラグイン。Blockbench で作ったモデルとアニメーシ�
 
 開発初期で、まだ使える状態ではない。
 
+## イージング
+
+rigel のモデル形式のプロジェクトでは、キーフレームの右クリックメニュー「イージング」から、そのキーフレームで始まる区間にイージングを当てられる。キーフレームの補間方式（linear・catmullrom・bezier）はそのままで、区間の中の進み方だけが変わる。
+
+- 組み込み：sine・quad・cubic・quart・quint・expo・circ・back・elastic・bounce の In・Out・InOut（30 種）
+- 行き過ぎ（back・elastic）：linear の区間では直線の先へ、catmullrom の区間では隣の区間の曲線の上へ行き過ぎる。bezier の区間と、前後にキーフレームがない catmullrom の端では、Blockbench が曲線を延ばせないので端の値で止まる
+- 「プリセットを管理…」：ベジェの形（CSS の `cubic-bezier()` と同じ 4 つの値）や、back の行き過ぎの量・elastic の振幅と周期を変えた関数をプリセットとして保存する。保存先はこの PC の Blockbench で、JSON で書き出して別の PC で読み込める。当てたキーフレームには形そのものが写るので、プロジェクトだけで同じ動きを再生でき、後でプリセットを編集しても当て済みのキーフレームは変わらない
+
 ## 由来
 
 [Animated Java](https://github.com/Animated-Java/animated-java) に着想を得た独立実装。Animated Java のコードやテンプレートは含まない。

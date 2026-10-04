@@ -1,20 +1,36 @@
 # Rigel
 
-Blockbench プラグイン。Blockbench で作ったモデルとアニメーションを、Minecraft Java Edition の display entity で動くデータパックとリソースパックへ出力する。
+Blockbench で作ったモデルとアニメーションを、Minecraft Java Edition の display entity で動くデータパックとリソースパックへ書き出す Blockbench プラグイン。
 
-- 出力先の版：Minecraft 1.20.4 と 26.3
-- 対応する Blockbench：最新の安定版
+- 書き出し先の版：Minecraft 1.20.4 と 26.3
+- 対応する Blockbench：デスクトップ版の 5.2.1 以降
 
-開発初期で、まだ使える状態ではない。
+開発の初期段階で、データパックとリソースパックの書き出しはまだできない。いま使えるのは、モデル形式「Rigel Rig」とキーフレームのイージングだけ。
 
-## イージング
+## 導入
 
-rigel のモデル形式のプロジェクトでは、キーフレームの右クリックメニュー「イージング」から、そのキーフレームで始まる区間にイージングを当てられる。キーフレームの補間方式（linear・catmullrom・bezier）はそのままで、区間の中の進み方だけが変わる。
+配布用のファイルはまだ無いので、ソースからビルドして読み込む。
 
-- 組み込み：sine・quad・cubic・quart・quint・expo・circ・back・elastic・bounce の In・Out・InOut（30 種）
-- 行き過ぎ（back・elastic）：linear の区間では直線の先へ、catmullrom の区間では隣の区間の曲線の上へ行き過ぎる。bezier の区間と、前後にキーフレームがない catmullrom の端では、Blockbench が曲線を延ばせないので端の値で止まる
-- 「プリセットを管理…」：ベジェの形（CSS の `cubic-bezier()` と同じ 4 つの値）や、back の行き過ぎの量・elastic の振幅と周期を変えた関数をプリセットとして保存する。保存先はこの PC の Blockbench で、JSON で書き出して別の PC で読み込める。当てたキーフレームには形そのものが写るので、プロジェクトだけで同じ動きを再生でき、後でプリセットを編集しても当て済みのキーフレームは変わらない
-- 「標準のベジェへ変換」：イージングを当てた区間を、Blockbench のベジェのハンドルを持つ 1 本の曲線に近似して置き換え、グラフエディタで形を直せるようにする。区間の両端のキーフレームは bezier になり、補間が変わる隣の linear・catmullrom の区間も同じ形のハンドルで bezier に置き換える。step の区間や、隣の区間の行き過ぎるイージング（back・elastic など）の形が変わってしまう場合は変換しない
+1. [bun](https://bun.com) 1.4.2 で `bun install --frozen-lockfile` と `bun run build` を実行し、`dist/rigel.js` を作る。
+2. Blockbench の File メニューから「Plugins...」を開き、ダイアログ上部の「Load Plugin from File」を押して `dist/rigel.js` を選ぶ。
+
+## 使い方
+
+新しいプロジェクトを、モデル形式「Rigel Rig」で作る。次の機能は、この形式のプロジェクトで使える。
+
+### イージング
+
+キーフレームを右クリックし、「イージング」からイージングを選ぶ。選んだイージングは、そのキーフレームから次のキーフレームまでの区間に適用される。キーフレームの補間方式（linear・catmullrom・bezier）は変わらず、区間の中の進み方だけが変わる。
+
+- 組み込みのイージングは、sine・quad・cubic・quart・quint・expo・circ・back・elastic・bounce の In・Out・InOut の 30 種。
+- 「プリセットを管理…」では、ベジェの形（CSS の `cubic-bezier()` と同じ 4 つの値）や、back の行き過ぎの量、elastic の振幅と周期を変えたものをプリセットとして保存できる。プリセットはその PC の Blockbench に保存され、JSON で書き出して別の PC で読み込める。
+- イージングを当てたキーフレームには、イージングの形そのものが保存される。プロジェクトファイルだけで同じ動きを再生でき、あとでプリセットを編集しても、当て済みのキーフレームは変わらない。
+- 「標準のベジェへ変換」は、イージングを当てた区間を Blockbench のベジェのハンドルに置き換え、グラフエディタで形を直せるようにする。区間を 1 本のベジェで近似するため、elastic や bounce のような形は変換すると変わる。
+
+### 制限
+
+- bezier の区間と、前後にキーフレームがない catmullrom の端では、back・elastic の行き過ぎが端の値で止まる。
+- 変換すると step の区間や、隣の区間の行き過ぎるイージングの形が変わってしまう場合は、変換しない。
 
 ## 由来
 
@@ -22,53 +38,11 @@ rigel のモデル形式のプロジェクトでは、キーフレームの右�
 
 ## 開発
 
-[bun](https://bun.com) 1.4.2 を使う。依存は公開から 7 日以上経った版だけを解決し（`bunfig.toml`）、install script は実行しない（`package.json` の `trustedDependencies`）。
-
 ```sh
 bun install --frozen-lockfile
 bun run typecheck
-bun run build     # dist/rigel.js
-bun run test      # 成功は 1 行の集計、失敗は失敗したテストの診断だけを表示。全出力は .test-logs/ に残る
-```
-
-bun が PATH に無い環境では、`npm exec --yes --package=bun@1.4.2 -- bun run build` のように版を指定して実行できる。
-
-### 検証用の Blockbench
-
-実機での確認には、公式 release の Blockbench 5.2.1（portable 版）から取り出したアプリを `%LOCALAPPDATA%\rigel-anim\blockbench-5.2.1` に置いた、検証用の Blockbench を使う（Windows 用、展開に 7-Zip が必要）。普段使いの Blockbench とはアプリもデータ領域も分かれていて、自動更新はしない。
-
-```sh
-bun scripts/dev-bb.ts setup      # portable 版をダウンロードし、SHA-256 を照合して展開する
-bun scripts/dev-bb.ts launch     # 127.0.0.1 だけの開発者用ポート（9467）で起動する
-bun scripts/dev-bb.ts install    # dist/rigel.js を読み込み直し、読み込み中に出たエラーを表示する
-bun scripts/dev-bb.ts eval "return Plugins.registered.rigel?.version"
-bun scripts/dev-bb.ts stop       # 保存せずに終了する
-```
-
-### 焼き込みの確認と書き込み数の集計
-
-`scripts/bake-stats.ts` は、起動中の検証用 Blockbench でリグのアニメを tick ごとの値に焼き込み、次の値を表にする。プラグインを `install` してから実行する。
-
-- display entity への書き込み数：毎 tick 全 Bone に書く場合、値が変わった Bone だけに書く場合、補間で再現できる tick を省く場合（許容誤差 3 段階）
-- 焼き込んだ値と Blockbench のプレビューの差、量子化の誤差、tick の中間で補間された姿勢のずれ
-
-```sh
-bun scripts/bake-stats.ts --synthetic                 # 補間・せん断・拡大 0・ミラーを含む合成リグ
-bun scripts/bake-stats.ts path/to/blueprints          # Animated Java の .ajblueprint（ファイルかフォルダ）
-```
-
-アニメごとの詳しい結果は `--out` に指定したファイル（既定は OS の一時フォルダ）に JSON で保存する。
-
-### イージングの確認
-
-`scripts/easing-check.ts` は、起動中の検証用 Blockbench でイージング付きの合成リグを開き、次を確かめる。プラグインを `install` してから実行する。
-
-- linear の区間に当てた組み込み 30 種と保存したベジェの値が関数の値と一致し、次の区間は変わらないこと。キーフレームを動かしても形が変わらないこと
-- catmullrom と bezier の区間で、行き過ぎるイージングが例外を出さないこと
-- 標準のベジェへの変換：変換しない場合は何も変えないこと、変換しなかった区間の値が変わらないこと、Undo・Redo と、保存して開き直したときに値が変わらないこと
-
-```sh
-bun scripts/easing-check.ts
+bun run test
+bun run build
 ```
 
 ## ライセンス

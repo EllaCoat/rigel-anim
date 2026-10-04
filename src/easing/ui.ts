@@ -1,5 +1,6 @@
 // The keyframe context menu entry and the preset dialog.
 import type { CustomMenuItem, MenuItem } from 'blockbench-types/generated/interface/menu'
+import { convertEasingToBezier } from './convert'
 import {
 	builtinEasings,
 	DEFAULT_AMPLITUDE,
@@ -65,6 +66,20 @@ function applyEasing(easing: Easing | undefined): void {
 	refreshAnimation()
 }
 
+const percent = (x: number) => `${(x * 100).toFixed(x < 0.01 ? 2 : 1)}%`
+
+function convertSelected(): void {
+	const report = convertEasingToBezier(selectedKeyframes())
+	const lines: string[] = []
+	if (report.converted) lines.push(`${report.converted} 区間をベジェに変換した（キーフレーム ${report.keyframes} 個、最大誤差は値の幅の ${percent(report.maxRelativeError)}）`)
+	if (report.blockedByStep) lines.push(`${report.blockedByStep} 区間は step のキーフレームの区間に影響するので変換していない`)
+	if (report.blockedByOvershoot) lines.push(`${report.blockedByOvershoot} 区間は、隣の区間の行き過ぎるイージング（back・elastic など）が変わるので変換していない。隣の区間も選んで一緒に変換して`)
+	if (report.blockedByExpression) lines.push(`${report.blockedByExpression} 区間は式（molang）を含むチャンネルなので変換していない`)
+	if (lines.length === 0) lines.push('変換できるイージング付きの区間がない')
+	if (report.converted) refreshAnimation()
+	Blockbench.showMessageBox({ title: '標準のベジェへ変換', message: lines.join('\n\n') })
+}
+
 function easingMenuItem(easing: Easing): CustomMenuItem {
 	return {
 		name: easing.name,
@@ -96,6 +111,12 @@ function menuChildren(): MenuItem[] {
 		...(presets.length ? ['_', ...presets.map(easingMenuItem)] : []),
 		'_',
 		{ name: 'プリセットを管理…', icon: 'tune', click: () => openPresetDialog() },
+		{
+			name: '標準のベジェへ変換',
+			icon: 'fa-bezier-curve',
+			condition: () => selectedKeyframes().some((k) => getEasing(k)),
+			click: convertSelected,
+		},
 	]
 }
 

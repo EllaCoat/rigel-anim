@@ -7,6 +7,8 @@ import { catmullromNeighbours, easedProgress, segmentKind, type SegmentContext }
 export const EASING_PROPERTY = 'rigel_easing'
 
 type EasedKeyframe = BBKeyframe & { [EASING_PROPERTY]?: unknown }
+type Axis = 'x' | 'y' | 'z'
+export const AXES: readonly Axis[] = ['x', 'y', 'z']
 
 export function getEasing(keyframe: BBKeyframe): Easing | undefined {
 	const value = (keyframe as EasedKeyframe)[EASING_PROPERTY]
@@ -63,6 +65,35 @@ function onInterpolate(event: InterpolateEvent): { t: number } | undefined {
 	// Quaternion slerp and the no_interpolations flag do not go through the catmullrom spline.
 	const linearPath = event.use_quaternions || !!Blockbench.hasFlag('no_interpolations')
 	return { t: progressFor(easing, event.t, event.keyframe_before, event.keyframe_after, linearPath) }
+}
+
+/**
+ * The value Blockbench's own interpolation gives for segment [index, index + 1] at progress alpha,
+ * without easing.
+ */
+export function baseValue(sorted: BBKeyframe[], index: number, axis: Axis, alpha: number, loop: boolean): number {
+	const before = sorted[index]!
+	const after = sorted[index + 1]!
+	switch (segmentKind(before, after)) {
+		case 'linear':
+			return before.getLerp(after, axis, alpha)
+		case 'catmullrom': {
+			const { before: plus, after: next } = catmullromNeighbours(sorted, index, loop)
+			return before.getCatmullromLerp(plus as BBKeyframe, before, after, next as BBKeyframe, axis, alpha)
+		}
+		case 'bezier':
+			return (before as unknown as { getBezierLerp(b: BBKeyframe, a: BBKeyframe, axis: Axis, alpha: number): number }).getBezierLerp(before, after, axis, alpha)
+		default:
+			return before.calc(axis, before.data_points.length - 1)
+	}
+}
+
+/** The value Blockbench shows for segment [index, index + 1] at raw progress t, easing included. */
+export function easedValue(sorted: BBKeyframe[], index: number, axis: Axis, t: number, loop: boolean): number {
+	const before = sorted[index]!
+	const easing = getEasing(before)
+	const alpha = easing && t > 0 && t < 1 ? easedProgress(easing.curve, t, segmentContext(sorted, index, loop)) : t
+	return baseValue(sorted, index, axis, alpha, loop)
 }
 
 let property: Deletable | undefined

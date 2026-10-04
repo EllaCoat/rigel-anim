@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { bezierEase, builtinEasings, ease, isEasing, sameCurve, type EasingCurve } from '../src/easing/curves'
+import { fitBezier, thirdsBezier } from '../src/easing/fit'
 import { mergePresets, parsePresetFile, presetFile, loadPresets } from '../src/easing/presets'
 import { catmullromNeighbours, easedProgress, segmentKind } from '../src/easing/segments'
 
@@ -110,6 +111,53 @@ describe('easing curves', () => {
 		expect(sameCurve({ type: 'function', family: 'back', mode: 'out' }, { type: 'function', family: 'back', mode: 'out', overshoot: 1.70158 })).toBe(true)
 		expect(sameCurve({ type: 'function', family: 'quad', mode: 'out', overshoot: 3 }, { type: 'function', family: 'quad', mode: 'out' })).toBe(true)
 		expect(sameCurve({ type: 'function', family: 'back', mode: 'out', overshoot: 3 }, { type: 'function', family: 'back', mode: 'out' })).toBe(false)
+	})
+})
+
+// Value of a bézier with time handles x1, x2 at time t, from f0 to f3.
+function bezierAt(f0: number, x1: number, v1: number, x2: number, v2: number, f3: number, t: number): number {
+	let lo = 0
+	let hi = 1
+	for (let i = 0; i < 60; i++) {
+		const m = (lo + hi) / 2
+		const x = 3 * (1 - m) ** 2 * m * x1 + 3 * (1 - m) * m * m * x2 + m ** 3
+		if (x < t) lo = m
+		else hi = m
+	}
+	const u = (lo + hi) / 2
+	return (1 - u) ** 3 * f0 + 3 * (1 - u) ** 2 * u * v1 + 3 * (1 - u) * u * u * v2 + u ** 3 * f3
+}
+
+describe('bézier fitting', () => {
+	test('handles at thirds reproduce any cubic', () => {
+		const f = (t: number) => 2 * t ** 3 - 3 * t * t + t + 5
+		const [v1, v2] = thirdsBezier(f(0), f(1 / 3), f(2 / 3), f(1))
+		for (let i = 0; i <= 20; i++) expect(bezierAt(f(0), 1 / 3, v1, 2 / 3, v2, f(1), i / 20)).toBeCloseTo(f(i / 20), 10)
+	})
+
+	const sampled = (f: (t: number) => number) => Array.from({ length: 201 }, (_, i) => f(i / 200))
+	const curve = (name: string) => builtinEasings().find((e) => e.name === name)!.curve
+
+	test('quad, cubic and back fit exactly; others within their known error', () => {
+		for (const name of ['easeInQuad', 'easeOutCubic', 'easeOutBack', 'easeInBack']) {
+			expect(fitBezier(sampled((t) => ease(curve(name), t))).error, name).toBeLessThan(1e-6)
+		}
+		const inOutQuad = fitBezier(sampled((t) => ease(curve('easeInOutQuad'), t)))
+		expect(inOutQuad.error).toBeGreaterThan(0.004)
+		expect(inOutQuad.error).toBeLessThan(0.006)
+		expect(fitBezier(sampled((t) => ease(curve('easeOutExpo'), t))).error).toBeLessThan(0.0015)
+	})
+
+	test('a fit scales with the values and stays a function of time', () => {
+		const fit = fitBezier(sampled((t) => 10 + 90 * ease(curve('easeOutSine'), t)))
+		expect(fit.error).toBeLessThan(90 * 0.0015)
+		expect(fit.x1).toBeGreaterThanOrEqual(0)
+		expect(fit.x1).toBeLessThanOrEqual(1)
+		expect(fit.x2).toBeGreaterThanOrEqual(0)
+		expect(fit.x2).toBeLessThanOrEqual(1)
+		for (let i = 0; i <= 20; i++) {
+			expect(Math.abs(bezierAt(10, fit.x1, fit.v1, fit.x2, fit.v2, 100, i / 20) - (10 + 90 * ease(curve('easeOutSine'), i / 20)))).toBeLessThan(90 * 0.0015)
+		}
 	})
 })
 

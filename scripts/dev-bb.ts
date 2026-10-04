@@ -11,6 +11,7 @@ import { spawn, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { copyFileSync, existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
+import { evaluate, PORT } from './devtools'
 
 const VERSION = '5.2.1'
 const ASSET = `Blockbench_${VERSION}_portable.exe`
@@ -20,7 +21,6 @@ const DEV_ROOT = process.env.BB_DEV_ROOT ?? join(process.env.LOCALAPPDATA ?? '',
 const APP = join(DEV_ROOT, 'app')
 const USER_DATA = join(DEV_ROOT, 'userdata')
 const PLUGINS = join(USER_DATA, 'plugins')
-const PORT = Number(process.env.BB_DEV_PORT ?? 9467)
 const REPO = resolve(import.meta.dir, '..')
 const PLUGIN_ID = 'rigel'
 
@@ -61,42 +61,6 @@ async function setup(force: boolean): Promise<void> {
 	rmSync(join(APP, 'resources', 'app-update.yml'), { force: true })
 	mkdirSync(PLUGINS, { recursive: true })
 	console.log(JSON.stringify({ app: APP, userData: USER_DATA, updaterConfig: existsSync(join(APP, 'resources', 'app-update.yml')) }, null, 1))
-}
-
-async function target(): Promise<string> {
-	const list = await (await fetch(`http://127.0.0.1:${PORT}/json/list`)).json()
-	const page = list.find((t: any) => t.type === 'page' && /index\.html/.test(t.url)) ?? list.find((t: any) => t.type === 'page')
-	if (!page) throw new Error('no Blockbench page target')
-	return page.webSocketDebuggerUrl
-}
-
-async function cdp(url: string, method: string, params: unknown): Promise<any> {
-	const socket = new WebSocket(url)
-	await new Promise((ok, fail) => {
-		socket.onopen = ok
-		socket.onerror = () => fail(new Error(`cannot connect to ${url}`))
-	})
-	try {
-		return await new Promise((ok, fail) => {
-			socket.onclose = () => fail(new Error('DevTools connection closed before the response'))
-			socket.onmessage = (event) => {
-				const message = JSON.parse(String(event.data))
-				if (message.id !== 1) return
-				if (message.error) fail(new Error(message.error.message))
-				else ok(message.result)
-			}
-			socket.send(JSON.stringify({ id: 1, method, params }))
-		})
-	} finally {
-		socket.close()
-	}
-}
-
-async function evaluate(code: string): Promise<any> {
-	const expression = `(async () => { ${code} })()`
-	const result = await cdp(await target(), 'Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true, userGesture: true })
-	if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description ?? result.exceptionDetails.text)
-	return result.result.value
 }
 
 async function waitReady(timeoutMs = 90_000): Promise<void> {

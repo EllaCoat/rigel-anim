@@ -1,3 +1,5 @@
+import { registerFormat, unregisterFormat } from './format'
+
 const PLUGIN_ID = 'rigel'
 const VERSION = '0.0.0'
 
@@ -9,4 +11,6 @@ BBPlugin.register(PLUGIN_ID, {
 	version: VERSION,
 	variant: 'desktop',
 	min_version: '5.2.1',
+	onload: registerFormat,
+	onunload: unregisterFormat,
 })

@@ -273,14 +273,18 @@ interface LineShape {
 	decimals: number
 	scale: boolean
 	matrix?: boolean
+	// The fixed words of a matrix line come from macro arguments (WRAP_ARGS) instead of the line text.
+	wrap?: boolean
 }
 const FULL_LINE: LineShape = { decimals: 4, scale: true }
+const WRAP_ARGS = '{m:"data merge entity",t:"transformation",s:"start_interpolation:0"}'
 function warmFrame(form: WarmForm, anim: Anim, f: number, rigs: number, macro: boolean, target = bone, shape = FULL_LINE): string {
 	const at = (b: number) => anim.values.subarray((f * anim.bones + b) * VALUES, (f * anim.bones + b + 1) * VALUES)
 	// The argument goes where any digit keeps the line valid: after start_interpolation:0, or after the
 	// storage key. Called with {_:""} the line is the plain one.
 	const [head, arg] = macro ? ['$', '$(_)'] : ['', '']
 	if (form === 'storage') return range(rigs).map((r) => `${head}data modify storage rbench:w c${r}${arg} set value ${frameWrite(anim, f)}`).join('\n')
+	if (shape.wrap) return range(rigs).flatMap((r) => range(anim.bones).map((b) => `$$(m) ${target(r, b)} {$(t):${transformationMatrix(at(b), shape.decimals)},$(s)}`)).join('\n')
 	const list = (vs: ArrayLike<number>) => `[${Array.from(vs, (v) => `${Number((v / Q).toFixed(shape.decimals))}f`).join(',')}]`
 	const write = (c: Int32Array) =>
 		shape.matrix ? `{transformation:${transformationMatrix(c, shape.decimals)},start_interpolation:0${arg}}` :
@@ -343,6 +347,7 @@ export const WARM_FILLS = {
 	'direct, no scale': { form: 'direct', macro: true, shape: { decimals: 4, scale: false } },
 	'direct, 2 decimals': { form: 'direct', macro: true, shape: { decimals: 2, scale: true } },
 	'direct, matrix': { form: 'direct', macro: true, shape: { decimals: 4, scale: true, matrix: true } },
+	'direct, matrix, wrapped words': { form: 'direct', macro: true, shape: { decimals: 4, scale: true, matrix: true, wrap: true } },
 	'plain direct lines': { form: 'direct', macro: false, shape: FULL_LINE },
 	storage: { form: 'storage', macro: true, shape: FULL_LINE },
 } as const satisfies Record<string, { form: WarmForm; macro: boolean; shape: LineShape }>
@@ -360,7 +365,7 @@ export function warmFill(kind: keyof typeof WARM_FILLS, frames: number): Experim
 	return {
 		name: `warm-fill-${kind}`,
 		modes: [],
-		setup: macro ? ['scoreboard players set #warm rb 1', ...range(frames).map((f) => `function ${NS}:wm/${f} {_:""}`), 'data remove storage rbench:w c0'].join('\n') : '',
+		setup: macro ? ['scoreboard players set #warm rb 1', ...range(frames).map((f) => `function ${NS}:wm/${f} ${'wrap' in shape && shape.wrap ? WRAP_ARGS : '{_:""}'}`), 'data remove storage rbench:w c0'].join('\n') : '',
 		bones: 0,
 		files,
 	}

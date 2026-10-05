@@ -1,7 +1,7 @@
 // Experiments for choosing the data pack structure. Each experiment is one data pack whose modes are
 // alternatives for one decision. Storage namespaces: rbench (work values written every tick),
 // rbench_anim (animation values, written only by setup), rbench_sink (dry runs' throwaway target).
-import { type Anim, frameWrite, layouts, Q, syntheticAnim, VALUES, writeCompound } from './anim'
+import { type Anim, frameWrite, layouts, Q, syntheticAnim, transformationMatrix, VALUES, writeCompound } from './anim'
 import { boneUuid, type Experiment, type Files, fn, NS, rootUuid, summonRigs, uuidString } from './gen'
 
 const range = (n: number) => Array.from({ length: n }, (_, i) => i)
@@ -171,6 +171,7 @@ export function writeForms(rigs: number, bones: number, options: { model?: boole
 	const files: Files = {}
 	const forms: [string, (r: number, b: number, f: number) => string[]][] = [
 		['data merge entity (literal)', (r, b, f) => [`data merge entity ${bone(r, b)} ${writeCompound(at(b, f))}`]],
+		['data merge entity (literal matrix)', (r, b, f) => [`data merge entity ${bone(r, b)} {transformation:${transformationMatrix(at(b, f))},start_interpolation:0}`]],
 		['modify {} merge from storage', (r, b, f) => [`data modify entity ${bone(r, b)} {} merge from storage rbench_anim:a w[${f}][${b}]`]],
 		['modify {} merge value (literal)', (r, b, f) => [`data modify entity ${bone(r, b)} {} merge value ${writeCompound(at(b, f))}`]],
 		['set transformation only (no interpolation)', (r, b, f) => [`data modify entity ${bone(r, b)} transformation set from storage rbench_anim:a full[${f}][${b}]`]],
@@ -271,6 +272,7 @@ type WarmForm = 'direct' | 'storage'
 interface LineShape {
 	decimals: number
 	scale: boolean
+	matrix?: boolean
 }
 const FULL_LINE: LineShape = { decimals: 4, scale: true }
 function warmFrame(form: WarmForm, anim: Anim, f: number, rigs: number, macro: boolean, target = bone, shape = FULL_LINE): string {
@@ -281,6 +283,7 @@ function warmFrame(form: WarmForm, anim: Anim, f: number, rigs: number, macro: b
 	if (form === 'storage') return range(rigs).map((r) => `${head}data modify storage rbench:w c${r}${arg} set value ${frameWrite(anim, f)}`).join('\n')
 	const list = (vs: ArrayLike<number>) => `[${Array.from(vs, (v) => `${Number((v / Q).toFixed(shape.decimals))}f`).join(',')}]`
 	const write = (c: Int32Array) =>
+		shape.matrix ? `{transformation:${transformationMatrix(c, shape.decimals)},start_interpolation:0${arg}}` :
 		`{transformation:{translation:${list(c.subarray(0, 3))},left_rotation:${list(c.subarray(3, 7))}${shape.scale ? `,scale:${list(c.subarray(7, 10))}` : ''}},start_interpolation:0${arg}}`
 	return range(rigs).flatMap((r) => range(anim.bones).map((b) => `${head}data merge entity ${target(r, b)} ${write(at(b))}`)).join('\n')
 }
@@ -339,6 +342,7 @@ export const WARM_FILLS = {
 	direct: { form: 'direct', macro: true, shape: FULL_LINE },
 	'direct, no scale': { form: 'direct', macro: true, shape: { decimals: 4, scale: false } },
 	'direct, 2 decimals': { form: 'direct', macro: true, shape: { decimals: 2, scale: true } },
+	'direct, matrix': { form: 'direct', macro: true, shape: { decimals: 4, scale: true, matrix: true } },
 	'plain direct lines': { form: 'direct', macro: false, shape: FULL_LINE },
 	storage: { form: 'storage', macro: true, shape: FULL_LINE },
 } as const satisfies Record<string, { form: WarmForm; macro: boolean; shape: LineShape }>

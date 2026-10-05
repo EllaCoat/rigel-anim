@@ -9,7 +9,7 @@
 import { spawnSync } from 'node:child_process'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { dispatch, type LoadForm, loadStep, pipelines, reloadPack, rootSearch, storageFill, WARM_FILLS, warmFill, warmPlayback, writeForms } from './experiments'
+import { dispatch, type LoadForm, loadStep, pipelines, reloadPack, respawn, rootSearch, storageFill, WARM_FILLS, warmFill, warmPlayback, writeForms } from './experiments'
 import { e1WriteCost, type Experiment, writePack } from './gen'
 import { javaPath, SERVER_DIR, Server, setup, WORLD } from './mc'
 import { startRecording, stopRecording, summarize } from './profile'
@@ -127,6 +127,7 @@ const SPRINTED: Record<string, () => Case[]> = {
 		{ label: 'riding, item without tag', experiment: writeForms(RIG.rigs, RIG.bones, { model: false }), units: RIG.rigs * RIG.bones, unit: 'write' },
 		{ label: 'not riding, item with CustomModelData', experiment: writeForms(RIG.rigs, RIG.bones, { ride: false }), units: RIG.rigs * RIG.bones, unit: 'write' },
 	],
+	respawn: () => [{ label: '3 × 250 bones', experiment: respawn(RIG.rigs, RIG.bones), units: RIG.rigs * RIG.bones, unit: 'bone' }],
 	dispatch: () => [50, 250].map((bones) => ({ label: `3 × ${bones} bones`, experiment: dispatch(RIG.rigs, bones), units: RIG.rigs * bones, unit: 'bone' })),
 	roots: () => [0, 1000, 5000].map((others) => ({ label: `${others} other entities`, experiment: rootSearch(RIG.rigs, others), units: RIG.rigs, unit: 'root' })),
 	load: () => [{ label: 'one step per tick', experiment: loadStep(LOAD_STEPS), units: LOAD_STEPS.map((s) => s.cells), unit: 'cell' }],
@@ -328,6 +329,7 @@ const SHOW: Record<string, () => Experiment> = {
 	e1: () => e1WriteCost({ rigs: 1, bones: 2, tags: 0 }),
 	pipelines: () => pipelines(1, 2, 2),
 	writes: () => writeForms(1, 2),
+	respawn: () => respawn(1, 2),
 	dispatch: () => dispatch(1, 3),
 	roots: () => rootSearch(2, 2),
 	load: () => loadStep([{ form: 'frameInts', cells: 2 }, { form: 'frameWrites', cells: 2, cached: true }]),

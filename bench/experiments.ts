@@ -202,6 +202,33 @@ export function writeForms(rigs: number, bones: number, options: { model?: boole
 	}
 }
 
+// Writing every bone each tick against killing each rig (root and passengers) and summoning it again with
+// the next frame's transformations in its Passengers list. Server-side cost only; clients would see the
+// rig respawn without interpolation.
+export function respawn(rigs: number, bones: number): Experiment {
+	const anim = syntheticAnim(2, bones, 7)
+	const at = (b: number, f: number) => anim.values.subarray((f * bones + b) * VALUES, (f * bones + b + 1) * VALUES)
+	const root = (r: number) => uuidString(rootUuid(r))
+	const files: Files = {}
+	for (const f of [0, 1]) {
+		files[fn(`rs/w${f}`)] = range(rigs).flatMap((r) => range(bones).map((b) => `data merge entity ${bone(r, b)} {transformation:${transformationMatrix(at(b, f))},start_interpolation:0}`)).join('\n')
+		files[fn(`rs/s${f}`)] = [
+			...range(rigs).flatMap((r) => [`execute as ${root(r)} on passengers run kill @s`, `kill ${root(r)}`]),
+			summonRigs({ rigs, bones, tags: 0, boneExtra: (_, b) => `transformation:${transformationMatrix(at(b, f))}` }),
+		].join('\n')
+	}
+	const alternate = (name: string) => [0, 1].map((f) => `execute if score #p rb matches ${f} run function ${NS}:rs/${name}${f}`)
+	const tick = modeFiles([alternate('w'), alternate('s')], 1)
+	tick[fn('tick')] = [tick[fn('tick')]!, 'scoreboard players add #p rb 1', 'execute if score #p rb matches 2 run scoreboard players set #p rb 0'].join('\n')
+	return {
+		name: 'respawn',
+		modes: ['data merge every bone (literal matrix)', 'kill every rig and summon it with Passengers'],
+		setup: summonRigs({ rigs, bones, tags: 0 }),
+		bones: rigs * bones,
+		files: { ...files, ...tick },
+	}
+}
+
 // E3: only the step that reaches each bone, with a trivial storage copy as the per-bone work.
 export function dispatch(rigs: number, bones: number): Experiment {
 	const files: Files = {}

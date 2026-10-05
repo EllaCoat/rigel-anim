@@ -52,12 +52,15 @@ export interface RigOptions {
 	item?: { model: boolean; name?: string }
 	// false: bones are summoned on their own at the root's position instead of riding it
 	ride?: boolean
+	// Extra NBT appended to each bone, e.g. its transformation
+	boneExtra?: (rig: number, bone: number) => string
 }
 
 // One root item_display per rig with its bones as passengers, all with fixed UUIDs, spaced along x.
-export function summonRigs({ rigs, bones, tags, item = { model: true }, ride = true }: RigOptions): string {
+export function summonRigs({ rigs, bones, tags, item = { model: true }, ride = true, boneExtra }: RigOptions): string {
 	const boneTags = ['rb', 'rb.bone', ...Array.from({ length: tags }, (_, i) => `rb.t${i}`)].map((t) => `"${t}"`).join(',')
-	const boneNbt = (r: number, b: number) => `UUID:${intArray(boneUuid(r, b))},Tags:[${boneTags}],interpolation_duration:1,item:${TARGET.item(item)}`
+	const boneNbt = (r: number, b: number) =>
+		`UUID:${intArray(boneUuid(r, b))},Tags:[${boneTags}],interpolation_duration:1,item:${TARGET.item(item)}${boneExtra ? `,${boneExtra(r, b)}` : ''}`
 	const lines: string[] = []
 	for (let r = 0; r < rigs; r++) {
 		const root = `UUID:${intArray(rootUuid(r))},Tags:["rb","rb.root"]`

@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { layouts, Q, syntheticAnim, VALUES, writeCompound } from '../bench/anim'
+import { layouts, Q, syntheticAnim, transformationMatrix, VALUES, writeCompound } from '../bench/anim'
 import { dispatch, loadStep, pipelines } from '../bench/experiments'
 import { boneUuid, e1WriteCost, NS, summonRigs, uuidString, writePack } from '../bench/gen'
 
@@ -58,6 +58,13 @@ describe('layouts', () => {
 		expect(layouts.frameWrites(anim).match(/start_interpolation:0/g)).toHaveLength(6)
 		expect(writeCompound([10000, -5000, 1, 0, 0, 0, 10000, 10000, 20000, 15000])).toBe(
 			'{transformation:{translation:[1f,-0.5f,0.0001f],left_rotation:[0f,0f,0f,1f],scale:[1f,2f,1.5f]},start_interpolation:0}',
+		)
+	})
+
+	test('transformationMatrix composes translation × rotation × scale row by row', () => {
+		// 90° about z, scale x 2, translation (1, 2, 3)
+		expect(transformationMatrix([10000, 20000, 30000, 0, 0, 7071, 7071, 20000, 10000, 10000])).toBe(
+			'[0f,-1f,0f,1f,2f,0f,0f,2f,0f,0f,1f,3f,0f,0f,0f,1f]',
 		)
 	})
 

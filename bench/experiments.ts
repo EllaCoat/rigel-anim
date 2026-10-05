@@ -1,7 +1,7 @@
 // Experiments for choosing the data pack structure. Each experiment is one data pack whose modes are
 // alternatives for one decision. Storage namespaces: rbench (work values written every tick),
 // rbench_anim (animation values, written only by setup), rbench_sink (dry runs' throwaway target).
-import { type Anim, frameWrite, layouts, Q, syntheticAnim, VALUES, writeCompound } from './anim'
+import { type Anim, frameWrite, layouts, Q, syntheticAnim, transformationMatrix, VALUES, writeCompound } from './anim'
 import { boneUuid, type Experiment, type Files, fn, NS, rootUuid, summonRigs, uuidString } from './gen'
 
 const range = (n: number) => Array.from({ length: n }, (_, i) => i)
@@ -171,6 +171,7 @@ export function writeForms(rigs: number, bones: number, options: { model?: boole
 	const files: Files = {}
 	const forms: [string, (r: number, b: number, f: number) => string[]][] = [
 		['data merge entity (literal)', (r, b, f) => [`data merge entity ${bone(r, b)} ${writeCompound(at(b, f))}`]],
+		['data merge entity (literal matrix)', (r, b, f) => [`data merge entity ${bone(r, b)} {transformation:${transformationMatrix(at(b, f))},start_interpolation:0}`]],
 		['modify {} merge from storage', (r, b, f) => [`data modify entity ${bone(r, b)} {} merge from storage rbench_anim:a w[${f}][${b}]`]],
 		['modify {} merge value (literal)', (r, b, f) => [`data modify entity ${bone(r, b)} {} merge value ${writeCompound(at(b, f))}`]],
 		['set transformation only (no interpolation)', (r, b, f) => [`data modify entity ${bone(r, b)} transformation set from storage rbench_anim:a full[${f}][${b}]`]],
@@ -196,6 +197,33 @@ export function writeForms(rigs: number, bones: number, options: { model?: boole
 			`data modify storage rbench_anim:a w set value ${layouts.frameWrites(anim)}`,
 			`data modify storage rbench_anim:a full set value ${layouts.frameTransformsFull(anim)}`,
 		].join('\n'),
+		bones: rigs * bones,
+		files: { ...files, ...tick },
+	}
+}
+
+// Writing every bone each tick against killing each rig (root and passengers) and summoning it again with
+// the next frame's transformations in its Passengers list. Server-side cost only; clients would see the
+// rig respawn without interpolation.
+export function respawn(rigs: number, bones: number): Experiment {
+	const anim = syntheticAnim(2, bones, 7)
+	const at = (b: number, f: number) => anim.values.subarray((f * bones + b) * VALUES, (f * bones + b + 1) * VALUES)
+	const root = (r: number) => uuidString(rootUuid(r))
+	const files: Files = {}
+	for (const f of [0, 1]) {
+		files[fn(`rs/w${f}`)] = range(rigs).flatMap((r) => range(bones).map((b) => `data merge entity ${bone(r, b)} {transformation:${transformationMatrix(at(b, f))},start_interpolation:0}`)).join('\n')
+		files[fn(`rs/s${f}`)] = [
+			...range(rigs).flatMap((r) => [`execute as ${root(r)} on passengers run kill @s`, `kill ${root(r)}`]),
+			summonRigs({ rigs, bones, tags: 0, boneExtra: (_, b) => `transformation:${transformationMatrix(at(b, f))}` }),
+		].join('\n')
+	}
+	const alternate = (name: string) => [0, 1].map((f) => `execute if score #p rb matches ${f} run function ${NS}:rs/${name}${f}`)
+	const tick = modeFiles([alternate('w'), alternate('s')], 1)
+	tick[fn('tick')] = [tick[fn('tick')]!, 'scoreboard players add #p rb 1', 'execute if score #p rb matches 2 run scoreboard players set #p rb 0'].join('\n')
+	return {
+		name: 'respawn',
+		modes: ['data merge every bone (literal matrix)', 'kill every rig and summon it with Passengers'],
+		setup: summonRigs({ rigs, bones, tags: 0 }),
 		bones: rigs * bones,
 		files: { ...files, ...tick },
 	}
@@ -271,16 +299,42 @@ type WarmForm = 'direct' | 'storage'
 interface LineShape {
 	decimals: number
 	scale: boolean
+	matrix?: boolean
+	// Fixed parts of a matrix line taken out of the line text and passed as macro arguments (MACRO_ARGS).
+	argsFor?: keyof typeof MACRO_ARGS
+	// $(_) at the very end of the line, so the template keeps no segment after it.
+	argAtEnd?: boolean
 }
 const FULL_LINE: LineShape = { decimals: 4, scale: true }
+const FIXED_TAIL = ',0f,0f,0f,1f],start_interpolation:0}'
+const MACRO_ARGS = {
+	words: '{m:"data merge entity",t:"transformation",s:"start_interpolation:0"}',
+	tail: `{_:"${FIXED_TAIL}"}`,
+	'prefix+tail': `{__:"data merge entity",_:"${FIXED_TAIL}"}`,
+}
+// The matrix line without its constant last row and what follows it, ending where FIXED_TAIL goes.
+function matrixHead(c: ArrayLike<number>, decimals: number): string {
+	const m = transformationMatrix(c, decimals)
+	if (!m.endsWith(',0f,0f,0f,1f]')) throw new Error(`unexpected last matrix row in ${m}`)
+	return `{transformation:${m.slice(0, -',0f,0f,0f,1f]'.length)}`
+}
 function warmFrame(form: WarmForm, anim: Anim, f: number, rigs: number, macro: boolean, target = bone, shape = FULL_LINE): string {
 	const at = (b: number) => anim.values.subarray((f * anim.bones + b) * VALUES, (f * anim.bones + b + 1) * VALUES)
 	// The argument goes where any digit keeps the line valid: after start_interpolation:0, or after the
 	// storage key. Called with {_:""} the line is the plain one.
 	const [head, arg] = macro ? ['$', '$(_)'] : ['', '']
 	if (form === 'storage') return range(rigs).map((r) => `${head}data modify storage rbench:w c${r}${arg} set value ${frameWrite(anim, f)}`).join('\n')
+	if (shape.argsFor) {
+		const line = {
+			words: (t: string, c: Int32Array) => `$$(m) ${t} {$(t):${transformationMatrix(c, shape.decimals)},$(s)}`,
+			tail: (t: string, c: Int32Array) => `$data merge entity ${t} ${matrixHead(c, shape.decimals)}$(_)`,
+			'prefix+tail': (t: string, c: Int32Array) => `$$(__) ${t} ${matrixHead(c, shape.decimals)}$(_)`,
+		}[shape.argsFor]
+		return range(rigs).flatMap((r) => range(anim.bones).map((b) => line(target(r, b), at(b)))).join('\n')
+	}
 	const list = (vs: ArrayLike<number>) => `[${Array.from(vs, (v) => `${Number((v / Q).toFixed(shape.decimals))}f`).join(',')}]`
 	const write = (c: Int32Array) =>
+		shape.matrix ? (shape.argAtEnd ? `{transformation:${transformationMatrix(c, shape.decimals)},start_interpolation:0}${arg}` : `{transformation:${transformationMatrix(c, shape.decimals)},start_interpolation:0${arg}}`) :
 		`{transformation:{translation:${list(c.subarray(0, 3))},left_rotation:${list(c.subarray(3, 7))}${shape.scale ? `,scale:${list(c.subarray(7, 10))}` : ''}},start_interpolation:0${arg}}`
 	return range(rigs).flatMap((r) => range(anim.bones).map((b) => `${head}data merge entity ${target(r, b)} ${write(at(b))}`)).join('\n')
 }
@@ -339,6 +393,11 @@ export const WARM_FILLS = {
 	direct: { form: 'direct', macro: true, shape: FULL_LINE },
 	'direct, no scale': { form: 'direct', macro: true, shape: { decimals: 4, scale: false } },
 	'direct, 2 decimals': { form: 'direct', macro: true, shape: { decimals: 2, scale: true } },
+	'direct, matrix': { form: 'direct', macro: true, shape: { decimals: 4, scale: true, matrix: true } },
+	'direct, matrix, $(_) at line end': { form: 'direct', macro: true, shape: { decimals: 4, scale: true, matrix: true, argAtEnd: true } },
+	'direct, matrix, wrapped words': { form: 'direct', macro: true, shape: { decimals: 4, scale: true, matrix: true, argsFor: 'words' } },
+	'direct, matrix, fixed tail as $(_)': { form: 'direct', macro: true, shape: { decimals: 4, scale: true, matrix: true, argsFor: 'tail' } },
+	'direct, matrix, prefix and fixed tail as args': { form: 'direct', macro: true, shape: { decimals: 4, scale: true, matrix: true, argsFor: 'prefix+tail' } },
 	'plain direct lines': { form: 'direct', macro: false, shape: FULL_LINE },
 	storage: { form: 'storage', macro: true, shape: FULL_LINE },
 } as const satisfies Record<string, { form: WarmForm; macro: boolean; shape: LineShape }>
@@ -356,7 +415,7 @@ export function warmFill(kind: keyof typeof WARM_FILLS, frames: number): Experim
 	return {
 		name: `warm-fill-${kind}`,
 		modes: [],
-		setup: macro ? ['scoreboard players set #warm rb 1', ...range(frames).map((f) => `function ${NS}:wm/${f} {_:""}`), 'data remove storage rbench:w c0'].join('\n') : '',
+		setup: macro ? ['scoreboard players set #warm rb 1', ...range(frames).map((f) => `function ${NS}:wm/${f} ${'argsFor' in shape ? MACRO_ARGS[shape.argsFor] : '{_:""}'}`), 'data remove storage rbench:w c0'].join('\n') : '',
 		bones: 0,
 		files,
 	}

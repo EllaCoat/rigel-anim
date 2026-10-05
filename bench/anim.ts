@@ -47,6 +47,21 @@ export function writeCompound(c: ArrayLike<number>): string {
 	return `{transformation:${transformationCompound(c)},start_interpolation:0}`
 }
 
+// The same transformation as the 16-float row-major matrix translation × left rotation × scale, the
+// alternative form Minecraft accepts for `transformation`.
+export function transformationMatrix(c: ArrayLike<number>, decimals = 4): string {
+	const [tx, ty, tz, x, y, z, w, sx, sy, sz] = Array.from(c, (v) => v / Q) as [number, number, number, number, number, number, number, number, number, number]
+	const r = [
+		[1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
+		[2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
+		[2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)],
+	]
+	const s = [sx, sy, sz]
+	const t = [tx, ty, tz]
+	const m = [...[0, 1, 2].flatMap((i) => [...[0, 1, 2].map((j) => r[i]![j]! * s[j]!), t[i]!]), 0, 0, 0, 1]
+	return `[${m.map((v) => `${Number(v.toFixed(decimals))}f`).join(',')}]`
+}
+
 // One frame of frameWrites: [{transformation:…,start_interpolation:0}, … per bone]
 export const frameWrite = (a: Anim, f: number) => `[${range(a.bones).map((b) => writeCompound(cell(a, f, b))).join(',')}]`
 

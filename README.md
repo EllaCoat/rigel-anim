@@ -32,10 +32,6 @@ Blockbench で作ったモデルとアニメーションを、Minecraft Java Edi
 - bezier の区間と、前後にキーフレームがない catmullrom の端では、back・elastic の行き過ぎが端の値で止まる。
 - 変換すると step の区間や、隣の区間の行き過ぎるイージングの形が変わってしまう場合は、変換しない。
 
-## 由来
-
-[Animated Java](https://github.com/Animated-Java/animated-java) に着想を得た独立実装。Animated Java のコードやテンプレートは含まない。
-
 ## 開発
 
 ```sh

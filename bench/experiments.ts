@@ -275,6 +275,8 @@ interface LineShape {
 	matrix?: boolean
 	// The fixed words of a matrix line come from macro arguments (WRAP_ARGS) instead of the line text.
 	wrap?: boolean
+	// $(_) at the very end of the line, so the template keeps no segment after it.
+	argAtEnd?: boolean
 }
 const FULL_LINE: LineShape = { decimals: 4, scale: true }
 const WRAP_ARGS = '{m:"data merge entity",t:"transformation",s:"start_interpolation:0"}'
@@ -287,7 +289,7 @@ function warmFrame(form: WarmForm, anim: Anim, f: number, rigs: number, macro: b
 	if (shape.wrap) return range(rigs).flatMap((r) => range(anim.bones).map((b) => `$$(m) ${target(r, b)} {$(t):${transformationMatrix(at(b), shape.decimals)},$(s)}`)).join('\n')
 	const list = (vs: ArrayLike<number>) => `[${Array.from(vs, (v) => `${Number((v / Q).toFixed(shape.decimals))}f`).join(',')}]`
 	const write = (c: Int32Array) =>
-		shape.matrix ? `{transformation:${transformationMatrix(c, shape.decimals)},start_interpolation:0${arg}}` :
+		shape.matrix ? (shape.argAtEnd ? `{transformation:${transformationMatrix(c, shape.decimals)},start_interpolation:0}${arg}` : `{transformation:${transformationMatrix(c, shape.decimals)},start_interpolation:0${arg}}`) :
 		`{transformation:{translation:${list(c.subarray(0, 3))},left_rotation:${list(c.subarray(3, 7))}${shape.scale ? `,scale:${list(c.subarray(7, 10))}` : ''}},start_interpolation:0${arg}}`
 	return range(rigs).flatMap((r) => range(anim.bones).map((b) => `${head}data merge entity ${target(r, b)} ${write(at(b))}`)).join('\n')
 }
@@ -347,6 +349,7 @@ export const WARM_FILLS = {
 	'direct, no scale': { form: 'direct', macro: true, shape: { decimals: 4, scale: false } },
 	'direct, 2 decimals': { form: 'direct', macro: true, shape: { decimals: 2, scale: true } },
 	'direct, matrix': { form: 'direct', macro: true, shape: { decimals: 4, scale: true, matrix: true } },
+	'direct, matrix, $(_) at line end': { form: 'direct', macro: true, shape: { decimals: 4, scale: true, matrix: true, argAtEnd: true } },
 	'direct, matrix, wrapped words': { form: 'direct', macro: true, shape: { decimals: 4, scale: true, matrix: true, wrap: true } },
 	'plain direct lines': { form: 'direct', macro: false, shape: FULL_LINE },
 	storage: { form: 'storage', macro: true, shape: FULL_LINE },

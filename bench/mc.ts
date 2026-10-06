@@ -41,7 +41,7 @@ const PROPERTIES = {
 	motd: 'rigel-anim bench',
 }
 
-async function fetchVerified(url: string, algorithm: 'sha1' | 'sha256', expected: string): Promise<Buffer> {
+export async function fetchVerified(url: string, algorithm: 'sha1' | 'sha256', expected: string): Promise<Buffer> {
 	const response = await fetch(url)
 	if (!response.ok) throw new Error(`download failed: ${url}: HTTP ${response.status}`)
 	const bytes = Buffer.from(await response.arrayBuffer())
@@ -86,33 +86,25 @@ export async function setup(): Promise<void> {
 
 type Waiter = { pattern: RegExp; resolve: (m: RegExpMatchArray) => void; reject: (e: Error) => void; timer: Timer }
 
-export class Server {
-	private proc: ChildProcessWithoutNullStreams
+// The output lines of a child process (stdout and stderr), and waits for a line that matches.
+export class Output {
 	private waiters: Waiter[] = []
 	private buffered = ''
-	private exited: Promise<number | null>
-	readonly log: string[] = []
+	readonly lines: string[] = []
+	readonly exited: Promise<number | null>
 
-	private constructor() {
-		this.proc = spawn(javaPath(), [`-Xms${HEAP}`, `-Xmx${HEAP}`, '-jar', 'server.jar', 'nogui'], { cwd: SERVER_DIR })
-		this.proc.stdout.setEncoding('utf8')
-		this.proc.stdout.on('data', (chunk: string) => this.onData(chunk))
-		this.proc.stderr.setEncoding('utf8')
-		this.proc.stderr.on('data', (chunk: string) => this.onData(chunk))
-		this.exited = new Promise((resolve) => this.proc.on('exit', (code) => {
+	constructor(proc: ChildProcessWithoutNullStreams, name: string) {
+		for (const stream of [proc.stdout, proc.stderr]) {
+			stream.setEncoding('utf8')
+			stream.on('data', (chunk: string) => this.onData(chunk))
+		}
+		this.exited = new Promise((resolve) => proc.on('exit', (code) => {
 			for (const w of this.waiters.splice(0)) {
 				clearTimeout(w.timer)
-				w.reject(new Error(`server exited (${code}) while waiting for ${w.pattern}`))
+				w.reject(new Error(`${name} exited (${code}) while waiting for ${w.pattern}`))
 			}
 			resolve(code)
 		}))
-	}
-
-	static async start(): Promise<Server> {
-		if (!existsSync(join(SERVER_DIR, 'server.jar'))) throw new Error(`no server.jar in ${SERVER_DIR}; run setup first`)
-		const server = new Server()
-		await server.waitFor(/Done \([\d.]+s\)! For help/, 300_000)
-		return server
 	}
 
 	private onData(chunk: string): void {
@@ -120,7 +112,7 @@ export class Server {
 		const lines = this.buffered.split(/\r?\n/)
 		this.buffered = lines.pop() ?? ''
 		for (const line of lines) {
-			this.log.push(line)
+			this.lines.push(line)
 			for (const w of [...this.waiters]) {
 				const match = line.match(w.pattern)
 				if (!match) continue
@@ -131,7 +123,7 @@ export class Server {
 		}
 	}
 
-	// Resolves with the first log line written after this call that matches.
+	// Resolves with the first line written after this call that matches.
 	waitFor(pattern: RegExp, timeoutMs = 60_000): Promise<RegExpMatchArray> {
 		return new Promise((resolve, reject) => {
 			const timer = setTimeout(() => {
@@ -141,6 +133,33 @@ export class Server {
 			const waiter: Waiter = { pattern, resolve, reject, timer }
 			this.waiters.push(waiter)
 		})
+	}
+}
+
+export class Server {
+	private proc: ChildProcessWithoutNullStreams
+	private output: Output
+
+	// `world` is the folder under SERVER_DIR the server loads (and creates when missing); WORLD by default.
+	private constructor(world?: string) {
+		const args = [`-Xms${HEAP}`, `-Xmx${HEAP}`, '-jar', 'server.jar', 'nogui', ...(world ? ['--world', world] : [])]
+		this.proc = spawn(javaPath(), args, { cwd: SERVER_DIR })
+		this.output = new Output(this.proc, 'server')
+	}
+
+	static async start(world?: string): Promise<Server> {
+		if (!existsSync(join(SERVER_DIR, 'server.jar'))) throw new Error(`no server.jar in ${SERVER_DIR}; run setup first`)
+		const server = new Server(world)
+		await server.waitFor(/Done \([\d.]+s\)! For help/, 300_000)
+		return server
+	}
+
+	get log(): string[] {
+		return this.output.lines
+	}
+
+	waitFor(pattern: RegExp, timeoutMs?: number): Promise<RegExpMatchArray> {
+		return this.output.waitFor(pattern, timeoutMs)
 	}
 
 	get pid(): number {
@@ -168,7 +187,7 @@ export class Server {
 
 	async stop(): Promise<void> {
 		this.send('stop')
-		const code = await this.exited
+		const code = await this.output.exited
 		if (code !== 0) throw new Error(`server exited with ${code}`)
 	}
 }

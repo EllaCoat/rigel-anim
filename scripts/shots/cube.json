@@ -1,0 +1,11 @@
+{
+	"origin": [0, -60, 0],
+	"datapacks": ["cube/cube-data"],
+	"resourcePacks": ["cube/cube-resources"],
+	"setup": ["function shot:cube"],
+	"views": [
+		{ "name": "front", "eye": [0, 1.2, 3.5], "yaw": 180, "pitch": 10 },
+		{ "name": "corner", "eye": [2.5, 2.5, 2.5], "yaw": 135, "pitch": 30 }
+	],
+	"model": "cube/cube.bbmodel"
+}

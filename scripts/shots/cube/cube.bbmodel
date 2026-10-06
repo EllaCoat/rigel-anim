@@ -1,0 +1,12 @@
+{
+	"meta": { "format_version": "4.10", "model_format": "free", "box_uv": false },
+	"name": "shot-cube",
+	"resolution": { "width": 16, "height": 16 },
+	"elements": [
+		{ "name": "white", "type": "cube", "uuid": "8f0e2a52-1c1b-4c3e-9a51-000000000001", "from": [-8, 0, -8], "to": [8, 16, 8], "origin": [0, 0, 0], "rotation": [0, 0, 0], "color": 0 },
+		{ "name": "orange", "type": "cube", "uuid": "8f0e2a52-1c1b-4c3e-9a51-000000000002", "from": [16, 0, -4], "to": [24, 8, 4], "origin": [0, 0, 0], "rotation": [0, 0, 0], "color": 1 },
+		{ "name": "blue", "type": "cube", "uuid": "8f0e2a52-1c1b-4c3e-9a51-000000000003", "from": [-2, 0, -20], "to": [2, 24, -16], "origin": [0, 0, 0], "rotation": [0, 0, 0], "color": 4 }
+	],
+	"outliner": ["8f0e2a52-1c1b-4c3e-9a51-000000000001", "8f0e2a52-1c1b-4c3e-9a51-000000000002", "8f0e2a52-1c1b-4c3e-9a51-000000000003"],
+	"textures": []
+}

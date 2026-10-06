@@ -140,14 +140,16 @@ export class Server {
 	private proc: ChildProcessWithoutNullStreams
 	private output: Output
 
-	private constructor() {
-		this.proc = spawn(javaPath(), [`-Xms${HEAP}`, `-Xmx${HEAP}`, '-jar', 'server.jar', 'nogui'], { cwd: SERVER_DIR })
+	// `world` is the folder under SERVER_DIR the server loads (and creates when missing); WORLD by default.
+	private constructor(world?: string) {
+		const args = [`-Xms${HEAP}`, `-Xmx${HEAP}`, '-jar', 'server.jar', 'nogui', ...(world ? ['--world', world] : [])]
+		this.proc = spawn(javaPath(), args, { cwd: SERVER_DIR })
 		this.output = new Output(this.proc, 'server')
 	}
 
-	static async start(): Promise<Server> {
+	static async start(world?: string): Promise<Server> {
 		if (!existsSync(join(SERVER_DIR, 'server.jar'))) throw new Error(`no server.jar in ${SERVER_DIR}; run setup first`)
-		const server = new Server()
+		const server = new Server(world)
 		await server.waitFor(/Done \([\d.]+s\)! For help/, 300_000)
 		return server
 	}

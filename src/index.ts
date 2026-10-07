@@ -1,5 +1,7 @@
 import { registerEasingKeyframes, unregisterEasingKeyframes } from './easing/keyframes'
 import { registerEasingUi, unregisterEasingUi } from './easing/ui'
+import { registerExportSettings, unregisterExportSettings } from './export/settings'
+import { registerExportUi, unregisterExportUi } from './export/ui'
 import { registerFormat, unregisterFormat } from './format'
 
 const PLUGIN_ID = 'rigel'
@@ -17,8 +19,12 @@ BBPlugin.register(PLUGIN_ID, {
 		registerFormat()
 		registerEasingKeyframes()
 		registerEasingUi()
+		registerExportSettings()
+		registerExportUi()
 	},
 	onunload() {
+		unregisterExportUi()
+		unregisterExportSettings()
 		unregisterEasingUi()
 		unregisterEasingKeyframes()
 		unregisterFormat()

@@ -3,7 +3,7 @@ import { ExportError, normalizeItem, settingsProblems, uniqueName } from './buil
 import { collectRig } from './collect'
 import { getPriority, newRigId, readProjectSettings, setPriority, writeProjectSettings, type ProjectSettings } from './settings'
 import { WARM_PRIORITIES, type WarmPriority } from './types'
-import { exportRig, type ExportFs } from './write'
+import { ExportConflict, exportRig, type ExportFs } from './write'
 
 const ACTION_ID = 'rigel_export'
 const TITLE = 'Rigel のパックを書き出す'
@@ -23,7 +23,7 @@ function problemsOf(settings: ProjectSettings): string[] {
 	return problems
 }
 
-async function run(settings: ProjectSettings): Promise<void> {
+async function run(settings: ProjectSettings, replace = false): Promise<void> {
 	const message = 'Rigel が書き出したパックをこのフォルダに書き込むため'
 	const datapacks = requireNativeModule('fs', { scope: settings.datapacks, message })
 	const resourcePack = datapacks && requireNativeModule('fs', { scope: settings.resourcePack, message })
@@ -36,9 +36,21 @@ async function run(settings: ProjectSettings): Promise<void> {
 			{ datapacks: { fs: datapacks as unknown as ExportFs, dir: settings.datapacks }, resourcePack: { fs: resourcePack as unknown as ExportFs, dir: settings.resourcePack } },
 			collectRig(),
 			settings,
+			{ replace },
 		)
 		Blockbench.showQuickMessage(`書き出した（${summary.files} ファイル）`, 2500)
 	} catch (error) {
+		if (error instanceof ExportConflict) {
+			const lines = [
+				...error.conflicts,
+				'このプロジェクトで置き換える？',
+				`召喚中の前のリグは新しい kill では消えないので、kill @e[tag=rigel.${settings.rig}] で消して。前のリグを使う別のワールドがあると、そちらの見た目は崩れる。`,
+			]
+			Blockbench.showMessageBox({ title: '同じリグ名のリグがある', message: paragraphs(lines), buttons: ['置き換える', 'やめる'], confirm: 0, cancel: 1 }, (button) => {
+				if (button === 0) void run(settings, true)
+			})
+			return
+		}
 		const lines = error instanceof ExportError ? error.problems : [String((error as Error)?.message ?? error)]
 		Blockbench.showMessageBox({ title: '書き出せなかった', message: paragraphs(lines) })
 	}

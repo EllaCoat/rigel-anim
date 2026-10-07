@@ -210,7 +210,7 @@ describe('presets', () => {
 
 	test('files that are not preset files are refused with a reason', () => {
 		expect(() => parsePresetFile('{')).toThrow('JSON')
-		expect(() => parsePresetFile(JSON.stringify([a]))).toThrow('プリセットのファイルではない')
+		expect(() => parsePresetFile(JSON.stringify([a]))).toThrow('プリセットのファイルではありません')
 		expect(() => parsePresetFile(JSON.stringify({ format: 'rigel-easing-presets', version: 2, presets: [] }))).toThrow('新しい版')
 		expect(() => parsePresetFile(JSON.stringify({ format: 'rigel-easing-presets', version: 1, presets: [a, { name: 'x' }] }))).toThrow('1 個')
 	})

@@ -28,13 +28,13 @@ export function parsePresetFile(text: string): Easing[] {
 	try {
 		data = JSON.parse(text)
 	} catch {
-		throw new Error('JSON として読めないファイル')
+		throw new Error('JSON として読めないファイルです。')
 	}
 	const file = data as { format?: unknown; version?: unknown; presets?: unknown }
-	if (file?.format !== FILE_FORMAT || !Array.isArray(file.presets)) throw new Error('rigel のイージングプリセットのファイルではない')
-	if (typeof file.version !== 'number' || file.version > FILE_VERSION) throw new Error('新しい版の rigel で書き出されたファイル')
+	if (file?.format !== FILE_FORMAT || !Array.isArray(file.presets)) throw new Error('Rigel のイージングプリセットのファイルではありません。')
+	if (typeof file.version !== 'number' || file.version > FILE_VERSION) throw new Error('新しい版の Rigel で書き出されたファイルです。')
 	const presets = file.presets.filter(isEasing)
-	if (presets.length !== file.presets.length) throw new Error(`${file.presets.length - presets.length} 個のプリセットの形が読めない`)
+	if (presets.length !== file.presets.length) throw new Error(`${file.presets.length - presets.length} 個のプリセットの形を読み込めません。`)
 	return presets
 }
 

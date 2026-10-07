@@ -42,7 +42,7 @@ function readMarker(fs: ExportFs, file: string): Marker | string {
 		const marker: unknown = JSON.parse(fs.readFileSync(file, 'utf8'))
 		if (typeof marker === 'object' && marker !== null && (marker as Marker).generator === 'rigel') return marker as Marker
 	} catch {}
-	return `${file} は rigel の印として読めないので書き換えない`
+	return `${file} は Rigel の印として読めないため、書き換えません。`
 }
 
 // undefined when the folder is missing or empty, a string when it is not a folder rigel wrote.
@@ -50,7 +50,7 @@ function folderMarker(fs: ExportFs, dir: string): Marker | string | undefined {
 	if (!fs.existsSync(dir)) return undefined
 	const entries = fs.readdirSync(dir)
 	if (entries.length === 0) return undefined
-	if (!entries.includes(MARKER)) return `${dir} は rigel が書き出したフォルダではない（${MARKER} が無い）ので書き換えない`
+	if (!entries.includes(MARKER)) return `${dir} は Rigel が書き出したフォルダではない（${MARKER} がない）ため、書き換えません。`
 	return readMarker(fs, join(dir, MARKER))
 }
 
@@ -89,15 +89,15 @@ export async function exportRig(target: ExportTarget, source: RigSource, setting
 
 	const rig = folderMarker(dp, rigDir)
 	if (typeof rig === 'string') problems.push(rig)
-	else if (rig && !(rig.rig === settings.rig && rig.id === id)) conflicts.push(`データパックの ${rigDir} は、別のプロジェクト（固有 ID ${String(rig.id)}）が書き出したリグ`)
+	else if (rig && !(rig.rig === settings.rig && rig.id === id)) conflicts.push(`データパックの ${rigDir} は、別のプロジェクト（固有 ID ${String(rig.id)}）が書き出したリグです。`)
 	const common = folderMarker(dp, commonDir)
 	if (typeof common === 'string') problems.push(common)
-	else if (common && common.common !== true) problems.push(`${commonDir} は共通のデータパックではないので書き換えない`)
+	else if (common && common.common !== true) problems.push(`${commonDir} は共通のデータパックではないため、書き換えません。`)
 	const rpMarker = rp.existsSync(rpMarkerFile) ? readMarker(rp, rpMarkerFile) : { generator: 'rigel' }
 	if (typeof rpMarker === 'string') problems.push(rpMarker)
 	const rigs = typeof rpMarker === 'string' ? new Map<string, string>() : rigsOf(rpMarker)
 	const owner = rigs.get(settings.rig)
-	if (owner !== undefined && owner !== id) conflicts.push(`リソースパックの ${settings.rig} は、別のプロジェクト（固有 ID ${owner}）が書き出したリグ`)
+	if (owner !== undefined && owner !== id) conflicts.push(`リソースパックの ${settings.rig} は、別のプロジェクト（固有 ID ${owner}）が書き出したリグです。`)
 
 	if (problems.length > 0) throw new ExportError(problems)
 	if (conflicts.length > 0 && !options.replace) throw new ExportConflict(conflicts)

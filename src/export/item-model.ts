@@ -35,11 +35,11 @@ export function itemModel(bone: BoneSource, textures: TextureSource[], textureId
 		const element: Record<string, unknown> = { from: place(lo), to: place(hi) }
 
 		const turned = [0, 1, 2].filter((i) => cube.rotation[i] !== 0)
-		if (turned.length > 1) errors.push(`${at}: 回転が 2 軸以上ある（item model は 1 軸だけ）`)
+		if (turned.length > 1) errors.push(`${at}: 回転が 2 軸以上あります（item model は 1 軸だけです）。`)
 		else if (turned.length === 1) {
 			const axis = turned[0]!
 			const angle = cube.rotation[axis]!
-			if (!ANGLES.includes(angle)) errors.push(`${at}: 回転 ${angle}° は item model で使えない（-45・-22.5・22.5・45 だけ）`)
+			if (!ANGLES.includes(angle)) errors.push(`${at}: 回転 ${angle}° は item model で使えません（使えるのは -45・-22.5・22.5・45 だけです）。`)
 			element.rotation = { angle, axis: AXES[axis], origin: place(cube.origin) }
 		}
 		if (!cube.shade) element.shade = false
@@ -50,7 +50,7 @@ export function itemModel(bone: BoneSource, textures: TextureSource[], textureId
 			if (!face) continue
 			const texture = textures[face.texture]
 			if (!texture) {
-				errors.push(`${at}: ${direction} の面のテクスチャが見つからない`)
+				errors.push(`${at}: ${direction} の面のテクスチャが見つかりません。`)
 				continue
 			}
 			const su = 16 / texture.uvWidth

@@ -18,17 +18,17 @@ const paragraphs = (lines: string[]) => lines.map((l) => l.replace(/\\/g, '\\\\'
 
 function problemsOf(settings: ProjectSettings): string[] {
 	const problems = settingsProblems(settings)
-	if (!settings.datapacks) problems.push('データパックの置き場所を選んで')
-	if (!settings.resourcePack) problems.push('リソースパックのフォルダを選んで')
+	if (!settings.datapacks) problems.push('データパックの置き場所を選んでください。')
+	if (!settings.resourcePack) problems.push('リソースパックのフォルダを選んでください。')
 	return problems
 }
 
 async function run(settings: ProjectSettings, replace = false): Promise<void> {
-	const message = 'Rigel が書き出したパックをこのフォルダに書き込むため'
+	const message = 'Rigel が書き出したパックを、このフォルダに書き込むためです。'
 	const datapacks = requireNativeModule('fs', { scope: settings.datapacks, message })
 	const resourcePack = datapacks && requireNativeModule('fs', { scope: settings.resourcePack, message })
 	if (!datapacks || !resourcePack) {
-		Blockbench.showMessageBox({ title: TITLE, message: 'フォルダへの書き込みが許可されなかったので、書き出していない' })
+		Blockbench.showMessageBox({ title: TITLE, message: 'フォルダへの書き込みが許可されなかったため、書き出していません。' })
 		return
 	}
 	try {
@@ -38,21 +38,21 @@ async function run(settings: ProjectSettings, replace = false): Promise<void> {
 			settings,
 			{ replace },
 		)
-		Blockbench.showQuickMessage(`書き出した（${summary.files} ファイル）`, 2500)
+		Blockbench.showQuickMessage(`書き出しました（${summary.files} ファイル）。`, 2500)
 	} catch (error) {
 		if (error instanceof ExportConflict) {
 			const lines = [
 				...error.conflicts,
-				'このプロジェクトで置き換える？',
-				`召喚中の前のリグは新しい kill では消えないので、kill @e[tag=rigel.${settings.rig}] で消して。前のリグを使う別のワールドがあると、そちらの見た目は崩れる。`,
+				'このプロジェクトで置き換えますか？',
+				`召喚中の前のリグは新しい kill では消えないため、kill @e[tag=rigel.${settings.rig}] で消してください。前のリグを使う別のワールドがある場合、そちらの見た目は崩れます。`,
 			]
-			Blockbench.showMessageBox({ title: '同じリグ名のリグがある', message: paragraphs(lines), buttons: ['置き換える', 'やめる'], confirm: 0, cancel: 1 }, (button) => {
+			Blockbench.showMessageBox({ title: '同じリグ名のリグがあります', message: paragraphs(lines), buttons: ['置き換える', 'キャンセル'], confirm: 0, cancel: 1 }, (button) => {
 				if (button === 0) void run(settings, true)
 			})
 			return
 		}
 		const lines = error instanceof ExportError ? error.problems : [String((error as Error)?.message ?? error)]
-		Blockbench.showMessageBox({ title: '書き出せなかった', message: paragraphs(lines) })
+		Blockbench.showMessageBox({ title: '書き出せませんでした', message: paragraphs(lines) })
 	}
 }
 
@@ -67,10 +67,10 @@ function openExportDialog(): void {
 		title: TITLE,
 		width: 640,
 		form: {
-			rig: { label: 'リグ名', type: 'text', value: current.rig || uniqueName(project.name, new Set()), description: '関数・偽プレイヤー・storage の名前に使う。小文字・数字・_ だけ' },
-			item: { label: '元の item', type: 'text', value: current.item, placeholder: 'minecraft:white_dye', description: 'CustomModelData を付けて Bone に表示する item' },
-			datapacks: { label: 'データパックの置き場所', type: 'folder', value: current.datapacks, description: 'ワールドの datapacks フォルダ。リグのパックと共通のパック rigel をここに書く' },
-			resourcePack: { label: 'リソースパック', type: 'folder', value: current.resourcePack, description: '全リグで共有するリソースパックのフォルダ' },
+			rig: { label: 'リグ名', type: 'text', value: current.rig || uniqueName(project.name, new Set()), description: '関数・偽プレイヤー・storage の名前に使います。小文字・数字・_ だけが使えます。' },
+			item: { label: '元の item', type: 'text', value: current.item, placeholder: 'minecraft:white_dye', description: 'CustomModelData を付けて、Bone の表示に使う item です。' },
+			datapacks: { label: 'データパックの置き場所', type: 'folder', value: current.datapacks, description: 'ワールドの datapacks フォルダです。リグのパックと、共通のパック rigel をここに書き出します。' },
+			resourcePack: { label: 'リソースパック', type: 'folder', value: current.resourcePack, description: '全リグで共有するリソースパックのフォルダです。' },
 			chunkLines: { label: '温めの 1 かたまり（行）', type: 'number', value: current.chunkLines, min: 1, step: 1 },
 			...Object.fromEntries(animations.map((a, i) => [`warm_${i}`, { label: `温めの優先度 ${i}: ${a.name}`, type: 'select', options: priorities, value: getPriority(a) }])),
 		},

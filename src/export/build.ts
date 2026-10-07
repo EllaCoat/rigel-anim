@@ -20,11 +20,11 @@ export function normalizeItem(item: string): string {
 
 export function settingsProblems(s: RigSettings): string[] {
 	const problems: string[] = []
-	if (!RIG_NAME.test(s.rig)) problems.push('リグ名は小文字・数字・_ だけにして')
-	else if (RESERVED_RIG_NAMES.includes(s.rig)) problems.push(`リグ名 ${s.rig} は共通のデータパックが使うので使えない（${RESERVED_RIG_NAMES.join('・')}）`)
-	if (!ITEM.test(s.item)) problems.push('元の item を minecraft:white_dye のような ID で入れて')
-	if (!Number.isInteger(s.chunkLines) || s.chunkLines < 1) problems.push('温めの 1 かたまりの行数は 1 以上の整数にして')
-	if (!Number.isInteger(s.id) || s.id < 1 || s.id > 0xffffffff) problems.push('固有 ID が不正（1〜4294967295 の整数になっていない）')
+	if (!RIG_NAME.test(s.rig)) problems.push('リグ名には小文字・数字・_ だけを使ってください。')
+	else if (RESERVED_RIG_NAMES.includes(s.rig)) problems.push(`リグ名 ${s.rig} は共通のデータパックが使うため、使えません（${RESERVED_RIG_NAMES.join('・')}）。`)
+	if (!ITEM.test(s.item)) problems.push('元の item は、minecraft:white_dye のような ID で入力してください。')
+	if (!Number.isInteger(s.chunkLines) || s.chunkLines < 1) problems.push('温めの 1 かたまりの行数は、1 以上の整数にしてください。')
+	if (!Number.isInteger(s.id) || s.id < 1 || s.id > 0xffffffff) problems.push('固有 ID が正しくありません（1〜4294967295 の整数ではありません）。')
 	return problems
 }
 
@@ -49,7 +49,7 @@ export interface ExportResult {
 export function buildExport(source: RigSource, settings: RigSettings, existingItemModel: string | undefined): ExportResult {
 	const problems = settingsProblems(settings)
 	const renderable = source.bones.flatMap((bone, index) => (bone.cubes.length > 0 ? [{ bone, index }] : []))
-	if (renderable.length === 0) problems.push('Cube を持つ Bone が無い')
+	if (renderable.length === 0) problems.push('Cube を持つ Bone がありません。')
 	if (problems.length > 0) throw new ExportError(problems)
 
 	const textureNames = new Set<string>()

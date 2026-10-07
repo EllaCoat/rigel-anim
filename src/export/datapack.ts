@@ -6,7 +6,8 @@ export const NAMESPACE = 'rigel'
 export const COMMON_PACK = 'rigel'
 // Paths and storages the common pack uses under the namespace, and the common pack's folder.
 export const RESERVED_RIG_NAMES = ['core', 'const', 'warm', COMMON_PACK]
-// Written into every pack folder the export creates; only folders with it are replaced.
+// Written into every pack folder the export creates; only folders with it are replaced. Each pack
+// writes it first, so a folder cut short by a failed write can still be replaced next time.
 export const MARKER = 'rigel.json'
 
 const PACK_FORMAT = 26
@@ -53,8 +54,8 @@ export function rigPack(p: RigPackInput): Files {
 	const write = (path: string, lines: string[]) => files.set(fn(`${p.rig}/${path}`), text(lines))
 	const warmingCheck = `execute if score ${self} Rigel.Warming matches 1 run return 0`
 
-	files.set('pack.mcmeta', json({ pack: { pack_format: PACK_FORMAT, description: `rigel: ${p.rig}` } }))
 	files.set(MARKER, json({ generator: 'rigel', rig: p.rig, id: hexId(p.id) }))
+	files.set('pack.mcmeta', json({ pack: { pack_format: PACK_FORMAT, description: `rigel: ${p.rig}` } }))
 	files.set('data/minecraft/tags/functions/load.json', json({ values: [id('load')] }))
 	files.set('data/minecraft/tags/functions/tick.json', json({ values: [id('tick')] }))
 
@@ -151,8 +152,8 @@ export function rigPack(p: RigPackInput): Files {
 export function commonPack(): Files {
 	const files: Files = new Map()
 	const write = (path: string, lines: string[]) => files.set(fn(path), text(lines))
-	files.set('pack.mcmeta', json({ pack: { pack_format: PACK_FORMAT, description: 'rigel: common' } }))
 	files.set(MARKER, json({ generator: 'rigel', common: true }))
+	files.set('pack.mcmeta', json({ pack: { pack_format: PACK_FORMAT, description: 'rigel: common' } }))
 	files.set('data/minecraft/tags/functions/load.json', json({ values: ['rigel:core/load'] }))
 	files.set('data/minecraft/tags/functions/tick.json', json({ values: ['rigel:core/tick'] }))
 	write('core/load', [...objectives(), `data modify storage ${FRAME_ARGS} set value {_:",0f,0f,0f,1f],start_interpolation:0}"}`])

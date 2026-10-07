@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { compose, normalizeQuat, quatToMat3, type Quat, type Vec3 } from '../src/bake/matrix'
 import { buildExport, ExportError, normalizeItem, settingsProblems } from '../src/export/build'
-import { commonPack, rigPack, uuidString, type RigPackInput } from '../src/export/datapack'
+import { commonPack, MARKER, rigPack, uuidString, type RigPackInput } from '../src/export/datapack'
 import { formatFloat, planChunks, planFrames, poseString } from '../src/export/frames'
 import { boneScale, itemModel } from '../src/export/item-model'
 import { mergeItemModel } from '../src/export/resource-pack'
@@ -207,6 +207,11 @@ describe('data pack', () => {
 		expect(spawn[1]).toContain('UUID:[I;439041101,0,0,0]')
 		expect(spawn[1]).toContain('UUID:[I;439041101,0,0,2],Tags:["rigel","rigel.axia"],item:{id:"minecraft:white_dye",Count:1b,tag:{CustomModelData:5}},interpolation_duration:1,transformation:[r1,0f,0f,0f,1f]}')
 		expect(lines(files, fn('tp'))).toEqual(['tp 1a2b3c4d-0-0-0-0 ~ ~ ~ ~ ~', 'execute as 1a2b3c4d-0-0-0-0 on passengers run tp @s ~ ~ ~ ~ ~'])
+	})
+
+	test('both packs write the marker before anything else', () => {
+		expect([...files.keys()][0]).toBe(MARKER)
+		expect([...commonPack().keys()][0]).toBe(MARKER)
 	})
 
 	test('negative IDs keep the hex form', () => {

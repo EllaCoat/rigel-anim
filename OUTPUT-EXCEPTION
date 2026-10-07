@@ -1,0 +1,21 @@
+rigel-anim output exception
+
+Additional permission under section 7 of the GNU Affero General Public
+License, version 3
+
+When you export a project with rigel-anim, it generates data packs, resource
+packs, and the files in them (together, the "Output"). The Output may include
+code and data that rigel-anim copies from its own source.
+
+As an additional permission under section 7 of the GNU Affero General Public
+License, version 3, the copyright holders of rigel-anim give you permission to
+use, copy, modify, and distribute the Output under terms of your choice,
+without the conditions of the GNU Affero General Public License.
+
+This permission applies only to the Output. rigel-anim itself, including
+modified versions of it, is licensed under the GNU Affero General Public
+License, version 3 or (at your option) any later version.
+
+If you modify rigel-anim, you may extend this permission to your version, but
+you are not obliged to do so. If you do not wish to do so, delete this
+permission from your version.

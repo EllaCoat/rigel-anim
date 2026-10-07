@@ -11,7 +11,7 @@
 		"typecheck": "tsc --noEmit -p tsconfig.json"
 	},
 	"trustedDependencies": [],
-	"license": "MIT",
+	"license": "AGPL-3.0-or-later",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/EllaCoat/rigel-anim.git"

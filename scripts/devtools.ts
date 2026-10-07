@@ -37,3 +37,17 @@ export async function evaluate(code: string): Promise<any> {
 	if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description ?? result.exceptionDetails.text)
 	return result.result.value
 }
+
+export async function blockbenchRunning(): Promise<boolean> {
+	try {
+		await fetch(`http://127.0.0.1:${PORT}/json/version`, { signal: AbortSignal.timeout(1000) })
+		return true
+	} catch {
+		return false
+	}
+}
+
+export function devBlockbench(command: 'launch' | 'stop'): void {
+	const result = Bun.spawnSync([process.execPath, `${import.meta.dir}/dev-bb.ts`, command], { stdio: ['ignore', 'inherit', 'inherit'] })
+	if (result.exitCode !== 0) throw new Error(`dev-bb.ts ${command} failed`)
+}

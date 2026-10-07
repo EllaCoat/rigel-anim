@@ -2,6 +2,13 @@
 // No Node imports: shot-harness.ts bundles this file for the Blockbench renderer.
 export type Vec3 = [number, number, number]
 
+// An animation of the spec's model at a tick: Blockbench shows it, and Minecraft gets the rig's frame
+// functions up to that tick.
+export interface Pose {
+	animation: string
+	tick: number
+}
+
 export interface View {
 	name: string
 	// Eye position in blocks, relative to the spec's origin.
@@ -9,11 +16,15 @@ export interface View {
 	// Minecraft's facing in degrees: yaw 0 looks south (+Z), 90 west (−X); positive pitch looks down.
 	yaw: number
 	pitch: number
+	// Without a pose the rig shows its rest pose.
+	pose?: Pose
 }
 
 export interface Spec {
 	// The world position Blockbench's origin stands for.
 	origin: Vec3
+	// Name of the Rigel rig the data packs hold, needed by views with a pose.
+	rig?: string
 	views: View[]
 	// Server console commands run once the player has joined, before the first view.
 	setup: string[]
@@ -56,7 +67,13 @@ function view(value: unknown, i: number): View {
 	if (typeof v.yaw !== 'number' || !Number.isFinite(v.yaw)) fail(`${at}.yaw must be a number`)
 	// Straight up or down leaves Blockbench's camera without an up direction.
 	if (typeof v.pitch !== 'number' || !(Math.abs(v.pitch) < 90)) fail(`${at}.pitch must be between -90 and 90 (exclusive)`)
-	return { name: v.name, eye: vec3(v.eye, `${at}.eye`), yaw: v.yaw, pitch: v.pitch }
+	const out: View = { name: v.name, eye: vec3(v.eye, `${at}.eye`), yaw: v.yaw, pitch: v.pitch }
+	if (v.pose !== undefined) {
+		const p = v.pose as Record<string, unknown>
+		if (typeof p.animation !== 'string' || !Number.isInteger(p.tick) || (p.tick as number) < 0) fail(`${at}.pose must be { animation: name, tick: whole number ≥ 0 }`)
+		out.pose = { animation: p.animation, tick: p.tick as number }
+	}
+	return out
 }
 
 export function parseSpec(value: unknown): Spec {
@@ -67,8 +84,13 @@ export function parseSpec(value: unknown): Spec {
 	if (names.size !== views.length) fail('view names must be unique')
 	if (s.model !== undefined && (typeof s.model !== 'string' || !s.model.endsWith('.bbmodel'))) fail('model must be a .bbmodel path')
 	if (s.settleMs !== undefined && (typeof s.settleMs !== 'number' || !(s.settleMs >= 0))) fail('settleMs must be a number of milliseconds')
+	if (views.some((v) => v.pose)) {
+		if (typeof s.rig !== 'string' || !/^[a-z0-9_]+$/.test(s.rig)) fail('rig must name the rig when a view has a pose')
+		if (s.model === undefined) fail('model is needed when a view has a pose')
+	}
 	return {
 		origin: vec3(s.origin, 'origin'),
+		rig: s.rig as string | undefined,
 		views,
 		setup: strings(s.setup, 'setup'),
 		datapacks: strings(s.datapacks, 'datapacks'),
@@ -91,6 +113,20 @@ const coordinate = (x: number) => x.toFixed(4)
 export function teleportArgs(spec: Spec, view: View): string {
 	const [x, y, z] = view.eye.map((v, i) => v + spec.origin[i]!) as Vec3
 	return [x, y - EYE_HEIGHT, z, view.yaw, view.pitch].map(coordinate).join(' ')
+}
+
+const TICKS_PER_SECOND = 20
+
+// Console commands that put the rig in the view's pose: f/0 writes every bone and later frames the
+// changes, so calling them in order reaches the tick from any earlier state.
+export function poseCommands(spec: Spec, animations: { name: string; length: number }[], view: View): string[] {
+	if (!spec.rig) return []
+	if (!view.pose) return [`function rigel:${spec.rig}/rest`]
+	const index = animations.findIndex((a) => a.name === view.pose!.animation)
+	if (index < 0) fail(`views ${view.name}: the model has no animation "${view.pose.animation}"`)
+	const last = Math.max(0, Math.ceil(animations[index]!.length * TICKS_PER_SECOND - 1e-9))
+	const tick = Math.min(view.pose.tick, last)
+	return Array.from({ length: tick + 1 }, (_, f) => `function rigel:${spec.rig}/frames/${index}/${f} with storage rigel:const FrameArgs`)
 }
 
 // Blockbench draws a block as 16 units with its origin at the spec's origin.

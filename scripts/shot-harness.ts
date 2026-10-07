@@ -1,5 +1,8 @@
 // Runs inside the development Blockbench: mc-shot.ts bundles this file and injects it as __rigelShot.
-import { blockbenchCamera, FOV, type View } from './shot-spec'
+import { blockbenchCamera, FOV, type Pose, type View } from './shot-spec'
+
+const TICKS_PER_SECOND = 20
+type Stackable = { stackAnimations(animations: BBAnimation[], inLoop: boolean): void }
 
 async function open(model: any, name: string) {
 	const format = model.meta?.model_format
@@ -10,11 +13,29 @@ async function open(model: any, name: string) {
 	}
 	Codecs.project.load(model, { name, path: name, no_file: true } as any)
 	unselectAllElements()
+	// The export includes cubes hidden in the viewport, so the comparison draws them too.
+	for (const node of [...Outliner.elements, ...Group.all]) (node as { visibility: boolean }).visibility = true
+	Canvas.updateVisibility()
+	Modes.options.animate!.select()
 	return { format: Format.id, elements: Outliner.elements.length }
+}
+
+// The pose the export samples for this tick (src/bake/sample.ts), or the rest pose.
+function applyPose(pose: Pose | undefined): void {
+	if (!pose) {
+		Animator.showDefaultPose()
+		return
+	}
+	Animator.showDefaultPose(true)
+	const animation = Project!.animations.find((a) => a.name === pose.animation)
+	if (!animation) throw new Error(`no animation "${pose.animation}"`)
+	Timeline.time = Math.min(pose.tick / TICKS_PER_SECOND, animation.length)
+	;(Animator as unknown as Stackable).stackAnimations([animation], false)
 }
 
 // Draws only the model (no grid, gizmos or background) into a transparent image of the given size.
 function render(view: View, width: number, height: number): string {
+	applyPose(view.pose)
 	const renderer = Preview.selected!.renderer
 	const camera = new THREE.PerspectiveCamera(FOV, width / height, 0.5, 30000)
 	const { position, target } = blockbenchCamera(view)

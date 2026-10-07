@@ -1,18 +1,61 @@
 // A small rig whose animations cover what baking has to handle: catmullrom, bezier, step and linear
 // keyframes; shear (children turning under unevenly scaled parents, with and without two equal scale
 // axes); zero scale; mirroring; a bone without cubes; a 'once' animation whose length is not a
-// whole number of ticks; and eased segments, overshooting ones included.
+// whole number of ticks; and eased segments, overshooting ones included. Each face direction has its
+// own colour, so a mirrored or turned export shows in screenshots.
+import { deflateSync } from 'node:zlib'
+
 let next = 0
 const id = () => `00000000-0000-4000-8000-${String(++next).padStart(12, '0')}`
 
 type V = [number, number, number]
+
+// 16×16 texture in 2 px wide stripes; face direction i uses stripe i.
+const STRIPES: [number, number, number][] = [[220, 40, 40], [40, 80, 220], [40, 180, 60], [230, 200, 40], [240, 240, 240], [60, 60, 60]]
+const DIRECTIONS = ['north', 'south', 'east', 'west', 'up', 'down']
+
+const CRC_TABLE = Array.from({ length: 256 }, (_, n) => {
+	let c = n
+	for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1
+	return c >>> 0
+})
+function crc32(bytes: Uint8Array): number {
+	let c = 0xffffffff
+	for (const b of bytes) c = CRC_TABLE[(c ^ b) & 0xff]! ^ (c >>> 8)
+	return (c ^ 0xffffffff) >>> 0
+}
+function chunk(type: string, data: Uint8Array): Buffer {
+	const body = Buffer.concat([Buffer.from(type, 'ascii'), data])
+	const out = Buffer.alloc(body.length + 8)
+	out.writeUInt32BE(data.length, 0)
+	body.copy(out, 4)
+	out.writeUInt32BE(crc32(body), body.length + 4)
+	return out
+}
+function paletteDataUrl(): string {
+	const size = 16
+	const raw = Buffer.alloc(size * (size * 4 + 1))
+	for (let y = 0; y < size; y++) {
+		for (let x = 0; x < size; x++) {
+			const [r, g, b] = STRIPES[Math.floor(x / 2)] ?? [255, 0, 255]
+			raw.set([r, g, b, 255], y * (size * 4 + 1) + 1 + x * 4)
+		}
+	}
+	const header = Buffer.alloc(13)
+	header.writeUInt32BE(size, 0)
+	header.writeUInt32BE(size, 4)
+	header.set([8, 6, 0, 0, 0], 8)
+	const png = Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', header), chunk('IDAT', deflateSync(raw)), chunk('IEND', new Uint8Array())])
+	return `data:image/png;base64,${png.toString('base64')}`
+}
+const faces = () => Object.fromEntries(DIRECTIONS.map((d, i) => [d, { uv: [i * 2 + 0.5, 4, i * 2 + 1.5, 12], texture: 0 }]))
 
 const elements: object[] = []
 function group(name: string, origin: V, cube?: [V, V], children: object[] = []) {
 	const kids: (object | string)[] = []
 	if (cube) {
 		const uuid = id()
-		elements.push({ name, type: 'cube', uuid, from: cube[0], to: cube[1], origin, rotation: [0, 0, 0] })
+		elements.push({ name, type: 'cube', uuid, from: cube[0], to: cube[1], origin, rotation: [0, 0, 0], faces: faces() })
 		kids.push(uuid)
 	}
 	return { name, uuid: id(), origin, rotation: [0, 0, 0], children: [...kids, ...children] }
@@ -67,7 +110,7 @@ export function syntheticRig() {
 		resolution: { width: 16, height: 16 },
 		elements,
 		outliner: [body],
-		textures: [],
+		textures: [{ name: 'palette.png', id: '0', uuid: id(), width: 16, height: 16, uv_width: 16, uv_height: 16, source: paletteDataUrl() }],
 		animations: [
 			animation('curves', 'loop', 1.5, {
 				body: [key('rotation', 0, [0, 0, 0], 'catmullrom'), key('rotation', 0.5, [10, 60, 0], 'catmullrom'), key('rotation', 1, [0, 120, 20], 'catmullrom'), key('rotation', 1.5, [0, 0, 0], 'catmullrom')],

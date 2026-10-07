@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
-import { blockbenchCamera, EYE_HEIGHT, lookDirection, parseSpec, teleportArgs } from '../scripts/shot-spec'
+import { blockbenchCamera, EYE_HEIGHT, lookDirection, parseSpec, poseCommands, teleportArgs } from '../scripts/shot-spec'
 
 const view = { name: 'front', eye: [0, 1.2, 3.5], yaw: 180, pitch: 10 }
 
@@ -19,6 +19,9 @@ describe('parseSpec', () => {
 		[{ origin: [0, 0, 0], views: [view, view] }, 'view names must be unique'],
 		[{ origin: [0, 0, 0], views: [view], model: 'rig.ajblueprint' }, 'model must be a .bbmodel path'],
 		[{ origin: [0, 0, 0], views: [view], setup: 'say hi' }, 'setup must be a list of strings'],
+		[{ origin: [0, 0, 0], views: [{ ...view, pose: { animation: 'walk', tick: 1.5 } }] }, 'views[0].pose must be'],
+		[{ origin: [0, 0, 0], views: [{ ...view, pose: { animation: 'walk', tick: 1 } }], model: 'rig.bbmodel' }, 'rig must name the rig'],
+		[{ origin: [0, 0, 0], rig: 'axia', views: [{ ...view, pose: { animation: 'walk', tick: 1 } }] }, 'model is needed'],
 	])('rejects %j', (input, message) => {
 		expect(() => parseSpec(input)).toThrow(message)
 	})
@@ -27,6 +30,25 @@ describe('parseSpec', () => {
 		const path = join(import.meta.dir, '..', 'scripts', 'shots', 'cube.json')
 		const spec = parseSpec(JSON.parse(readFileSync(path, 'utf8')))
 		for (const file of [...spec.datapacks, ...spec.resourcePacks, spec.model!]) expect(existsSync(resolve(dirname(path), file))).toBe(true)
+	})
+})
+
+describe('poses', () => {
+	const spec = parseSpec({ origin: [0, 0, 0], rig: 'axia', model: 'rig.bbmodel', views: [view, { ...view, name: 'walk', pose: { animation: 'walk', tick: 2 } }, { ...view, name: 'late', pose: { animation: 'walk', tick: 99 } }] })
+	const animations = [{ name: 'idle', length: 1 }, { name: 'walk', length: 0.12 }]
+	const frame = (f: number) => `function rigel:axia/frames/1/${f} with storage rigel:const FrameArgs`
+
+	test('a view with a pose calls the frames up to its tick, and one without returns to the rest pose', () => {
+		expect(poseCommands(spec, animations, spec.views[0]!)).toEqual(['function rigel:axia/rest'])
+		expect(poseCommands(spec, animations, spec.views[1]!)).toEqual([frame(0), frame(1), frame(2)])
+	})
+
+	test('a tick past the end stops at the last frame', () => {
+		expect(poseCommands(spec, animations, spec.views[2]!).at(-1)).toBe(frame(3))
+	})
+
+	test('an animation the model does not have is reported', () => {
+		expect(() => poseCommands(spec, [], spec.views[1]!)).toThrow('the model has no animation "walk"')
 	})
 })
 

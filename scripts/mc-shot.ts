@@ -11,9 +11,9 @@ import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, writ
 import { basename, dirname, join, resolve } from 'node:path'
 import { SERVER_DIR, Server } from '../bench/mc'
 import { TARGET } from '../bench/target'
-import { evaluate, PORT } from './devtools'
+import { blockbenchRunning, devBlockbench, evaluate } from './devtools'
 import { Client, GAME_DIR, KEY_F1, PLAYER, setupClient } from './mc-client'
-import { parseSpec, type Spec, teleportArgs } from './shot-spec'
+import { parseSpec, poseCommands, type Spec, teleportArgs } from './shot-spec'
 
 const WORLD_NAME = 'shot'
 // Windows clamps the window to the screen, and a session with no monitor attached has a 1024×768 one.
@@ -36,7 +36,8 @@ function copyPacks(sources: string[], specDir: string, into: string): string[] {
 	})
 }
 
-async function shoot(spec: Spec, specDir: string, out: string): Promise<string[]> {
+// `poses[i]` are the console commands that set up the rig's pose for view i.
+async function shoot(spec: Spec, specDir: string, out: string, poses: string[][]): Promise<string[]> {
 	const world = join(SERVER_DIR, WORLD_NAME)
 	rmSync(world, { recursive: true, force: true })
 	copyPacks(spec.datapacks, specDir, join(world, 'datapacks'))
@@ -64,7 +65,12 @@ async function shoot(spec: Spec, specDir: string, out: string): Promise<string[]
 		await sleep(JOIN_SETTLE_MS)
 		await client.press(KEY_F1)
 		const files: string[] = []
-		for (const view of spec.views) {
+		for (const [i, view] of spec.views.entries()) {
+			const from = server.log.length
+			for (const command of poses[i]!) server.send(command)
+			await server.sync()
+			const errors = server.log.slice(from).filter((line) => COMMAND_ERROR.test(line))
+			if (errors.length > 0) throw new Error(`pose commands of ${view.name} failed:\n${errors.join('\n')}`)
 			server.send(`tp ${PLAYER} ${teleportArgs(spec, view)}`)
 			await server.sync()
 			await sleep(spec.settleMs)
@@ -81,20 +87,6 @@ async function shoot(spec: Spec, specDir: string, out: string): Promise<string[]
 		writeFileSync(join(out, 'server.log'), server.log.join('\n'))
 		await server.stop()
 	}
-}
-
-async function blockbenchRunning(): Promise<boolean> {
-	try {
-		await fetch(`http://127.0.0.1:${PORT}/json/version`, { signal: AbortSignal.timeout(1000) })
-		return true
-	} catch {
-		return false
-	}
-}
-
-function devBlockbench(command: 'launch' | 'stop'): void {
-	const result = Bun.spawnSync([process.execPath, join(import.meta.dir, 'dev-bb.ts'), command], { stdio: ['ignore', 'inherit', 'inherit'] })
-	if (result.exitCode !== 0) throw new Error(`dev-bb.ts ${command} failed`)
 }
 
 const pngSize = (png: Buffer) => ({ width: png.readUInt32BE(16), height: png.readUInt32BE(20) })
@@ -142,7 +134,9 @@ async function main(): Promise<void> {
 	const spec = parseSpec(JSON.parse(readFileSync(specPath, 'utf8')))
 	const out = join(RESULTS, `${basename(specPath, '.json')}-${new Date().toISOString().replace(/[:.]/g, '-')}`)
 	mkdirSync(out, { recursive: true })
-	const shots = await shoot(spec, dirname(specPath), out)
+	const animations: { name: string; length: number }[] = spec.model ? (JSON.parse(readFileSync(resolve(dirname(specPath), spec.model), 'utf8')).animations ?? []) : []
+	const poses = spec.views.map((view) => poseCommands(spec, animations, view))
+	const shots = await shoot(spec, dirname(specPath), out, poses)
 	const compared = spec.model ? await drawInBlockbench({ ...spec, model: spec.model }, dirname(specPath), shots, out) : []
 	console.log(JSON.stringify({ out, minecraft: shots.map((f) => basename(f)), compare: compared.map((f) => basename(f)) }, null, 1))
 }

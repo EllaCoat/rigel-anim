@@ -43,4 +43,10 @@ bun run build
 
 ## ライセンス
 
-MIT
+Rigel は GNU Affero General Public License v3.0 以降（AGPL-3.0-or-later）で公開する。本文は [LICENSE](LICENSE) にある。
+
+Rigel で書き出したデータパックとリソースパックは、[OUTPUT-EXCEPTION](OUTPUT-EXCEPTION) の追加の許可によって、AGPL の条件なしで自由に使ったり配布したりできる。Rigel 自体とその改変版には、AGPL の条件が適用される。
+
+Rigel は Animated Java を参考にした独立実装で、Animated Java のコードは含まない。
+
+Copyright (C) 2026 EllaCoat

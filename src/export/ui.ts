@@ -13,6 +13,9 @@ let dialog: Dialog | undefined
 
 type FormResult = Record<string, unknown>
 
+// Message boxes render Markdown: each line becomes its own paragraph, and doubled backslashes keep Windows paths intact.
+const paragraphs = (lines: string[]) => lines.map((l) => l.replace(/\\/g, '\\\\')).join('\n\n')
+
 function problemsOf(settings: ProjectSettings): string[] {
 	const problems = settingsProblems(settings)
 	if (!settings.datapacks) problems.push('データパックの置き場所を選んで')
@@ -36,8 +39,8 @@ async function run(settings: ProjectSettings): Promise<void> {
 		)
 		Blockbench.showQuickMessage(`書き出した（${summary.files} ファイル）`, 2500)
 	} catch (error) {
-		const message = error instanceof ExportError ? error.problems.join('\n') : String((error as Error)?.message ?? error)
-		Blockbench.showMessageBox({ title: '書き出せなかった', message })
+		const lines = error instanceof ExportError ? error.problems : [String((error as Error)?.message ?? error)]
+		Blockbench.showMessageBox({ title: '書き出せなかった', message: paragraphs(lines) })
 	}
 }
 
@@ -70,7 +73,7 @@ function openExportDialog(): void {
 			}
 			const problems = problemsOf(settings)
 			if (problems.length > 0) {
-				Blockbench.showMessageBox({ title: TITLE, message: problems.join('\n') })
+				Blockbench.showMessageBox({ title: TITLE, message: paragraphs(problems) })
 				return false
 			}
 			writeProjectSettings(project, settings)

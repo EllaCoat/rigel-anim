@@ -9,7 +9,7 @@ import { formatFloat, planChunks, planFrames, poseString } from '../src/export/f
 import { boneScale, itemModel } from '../src/export/item-model'
 import { mergeItemModel } from '../src/export/resource-pack'
 import type { AnimationSource, BoneSource, Files, RigSettings, RigSource, TextureSource } from '../src/export/types'
-import { exportRig, type ExportFs } from '../src/export/write'
+import { ExportConflict, exportRig, type ExportFs } from '../src/export/write'
 
 const text = (files: Files, path: string) => {
 	const content = files.get(path)
@@ -336,7 +336,7 @@ describe('export', () => {
 		}
 	})
 
-	test('refuses folders it did not write, and rigs of another project', async () => {
+	test('refuses folders and markers it did not write', async () => {
 		const root = mkdtempSync(join(tmpdir(), 'rigel-export-'))
 		try {
 			mkdirSync(join(root, 'datapacks/axia'), { recursive: true })
@@ -345,10 +345,69 @@ describe('export', () => {
 			expect(readFileSync(join(root, 'datapacks/axia/mine.txt'), 'utf8')).toBe('keep')
 
 			rmSync(join(root, 'datapacks/axia'), { recursive: true })
-			await exportRig(target(root), source(), settings)
-			await expect(exportRig(target(root), source(), { ...settings, id: 99 })).rejects.toThrow(/別のプロジェクト/)
+			mkdirSync(join(root, 'resources'), { recursive: true })
+			writeFileSync(join(root, 'resources/rigel.json'), '{"name":"mine"}')
+			await expect(exportRig(target(root), source(), settings, { replace: true })).rejects.toThrow(ExportError)
+			expect(readFileSync(join(root, 'resources/rigel.json'), 'utf8')).toBe('{"name":"mine"}')
+			expect(existsSync(join(root, 'datapacks/axia'))).toBe(false)
 		} finally {
 			rmSync(root, { recursive: true, force: true })
 		}
+	})
+
+	describe('another project under the same rig name', () => {
+		const other = { ...settings, id: 99 }
+		const world = (root: string, name: string) => ({ ...target(root), datapacks: { fs: nodeFs, dir: join(root, name) } })
+		const owners = (root: string) => JSON.parse(readFileSync(join(root, 'resources/rigel.json'), 'utf8'))
+		const conflicts = async (run: Promise<unknown>) => {
+			const error = await run.then(
+				() => undefined,
+				(e: unknown) => e,
+			)
+			expect(error).toBeInstanceOf(ExportConflict)
+			return (error as ExportConflict).conflicts.length
+		}
+
+		test('the resource pack records the project of each rig', async () => {
+			const root = mkdtempSync(join(tmpdir(), 'rigel-export-'))
+			try {
+				await exportRig(target(root), source(), { ...settings, rig: 'beta', id: 2 })
+				await exportRig(target(root), source(), settings)
+				await exportRig(target(root), source(), { ...settings, rig: 'constructor', id: 3 })
+				expect(owners(root)).toEqual({ generator: 'rigel', rigs: { axia: '1a2b3c4d', beta: '00000002', constructor: '00000003' } })
+			} finally {
+				rmSync(root, { recursive: true, force: true })
+			}
+		})
+
+		test('in another world, the shared resource pack asks before replacing', async () => {
+			const root = mkdtempSync(join(tmpdir(), 'rigel-export-'))
+			try {
+				await exportRig(world(root, 'one'), source(), settings)
+				expect(await conflicts(exportRig(world(root, 'two'), source(), other))).toBe(1)
+				expect(existsSync(join(root, 'two/axia'))).toBe(false)
+				expect(owners(root).rigs.axia).toBe('1a2b3c4d')
+
+				await exportRig(world(root, 'two'), source(), other, { replace: true })
+				expect(owners(root).rigs.axia).toBe('00000063')
+				expect(await conflicts(exportRig(world(root, 'one'), source(), settings))).toBe(1)
+			} finally {
+				rmSync(root, { recursive: true, force: true })
+			}
+		})
+
+		test('in the same world, a remade project replaces both packs once agreed', async () => {
+			const root = mkdtempSync(join(tmpdir(), 'rigel-export-'))
+			try {
+				await exportRig(target(root), source(), settings)
+				expect(await conflicts(exportRig(target(root), source(), other))).toBe(2)
+				await exportRig(target(root), source(), other, { replace: true })
+				expect(JSON.parse(readFileSync(join(root, 'datapacks/axia/rigel.json'), 'utf8')).id).toBe('00000063')
+				expect(owners(root).rigs.axia).toBe('00000063')
+				await exportRig(target(root), source(), other)
+			} finally {
+				rmSync(root, { recursive: true, force: true })
+			}
+		})
 	})
 })

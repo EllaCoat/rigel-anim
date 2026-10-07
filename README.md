@@ -54,7 +54,7 @@ File メニューの「Export」から「Rigel のパックを書き出す」を
 - リソースパックの `assets/rigel/models/<リグ名>/` と `assets/rigel/textures/item/<リグ名>/`：Bone のモデルとテクスチャ。
 - 元の item のモデル（`assets/minecraft/models/item/<item>.json` など）：このリグの overrides だけを入れ替える。ほかのリグや、元からある overrides は残す。ファイルが無いときは、平らなアイテムのモデルとして作る。
 
-データパックのフォルダは、空のときか、Rigel が書き出した印（`rigel.json`）があるときだけ作り直す。同じリグ名で別のプロジェクトが書き出したフォルダも書き換えない。Blockbench で非表示にした Cube も書き出し、Export を切った Cube と Bone は書き出さない。
+データパックのフォルダは、空のときか、Rigel が書き出した印（`rigel.json`）があるときだけ作り直す。リソースパックの直下の `rigel.json` には、リグ名ごとに、書き出したプロジェクトの固有 ID を残す。同じリグ名で別のプロジェクトが書き出していたら、置き換えるかを尋ねてから書き出す。Blockbench で非表示にした Cube も書き出し、Export を切った Cube と Bone は書き出さない。
 
 #### 呼び出し
 

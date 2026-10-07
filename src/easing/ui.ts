@@ -71,11 +71,11 @@ const percent = (x: number) => `${(x * 100).toFixed(x < 0.01 ? 2 : 1)}%`
 function convertSelected(): void {
 	const report = convertEasingToBezier(selectedKeyframes())
 	const lines: string[] = []
-	if (report.converted) lines.push(`${report.converted} 区間をベジェに変換した（キーフレーム ${report.keyframes} 個、最大誤差は値の幅の ${percent(report.maxRelativeError)}）`)
-	if (report.blockedByStep) lines.push(`${report.blockedByStep} 区間は step のキーフレームの区間に影響するので変換していない`)
-	if (report.blockedByOvershoot) lines.push(`${report.blockedByOvershoot} 区間は、隣の区間の行き過ぎるイージング（back・elastic など）が変わるので変換していない。隣の区間も選んで一緒に変換して`)
-	if (report.blockedByExpression) lines.push(`${report.blockedByExpression} 区間は式（molang）を含むチャンネルなので変換していない`)
-	if (lines.length === 0) lines.push('変換できるイージング付きの区間がない')
+	if (report.converted) lines.push(`${report.converted} 区間をベジェに変換しました（キーフレーム ${report.keyframes} 個、最大誤差は値の幅の ${percent(report.maxRelativeError)}）。`)
+	if (report.blockedByStep) lines.push(`${report.blockedByStep} 区間は、step のキーフレームの区間に影響するため変換していません。`)
+	if (report.blockedByOvershoot) lines.push(`${report.blockedByOvershoot} 区間は、隣の区間の行き過ぎるイージング（back・elastic など）が変わるため変換していません。隣の区間も選んで一緒に変換してください。`)
+	if (report.blockedByExpression) lines.push(`${report.blockedByExpression} 区間は、式（molang）を含むチャンネルのため変換していません。`)
+	if (lines.length === 0) lines.push('変換できるイージング付きの区間がありません。')
 	if (report.converted) refreshAnimation()
 	Blockbench.showMessageBox({ title: '標準のベジェへ変換', message: lines.join('\n\n') })
 }
@@ -164,16 +164,16 @@ function uniqueName(base: string, presets: Easing[]): string {
 /** The bézier of the first selected keyframe's segment, normalized on the axis that moves most. */
 function bezierFromSelection(): BezierCurve | string {
 	const keyframe = selectedKeyframes()[0]
-	if (!keyframe) return 'キーフレームを選んでから取り込んで'
+	if (!keyframe) return 'キーフレームを選んでから取り込んでください。'
 	const sorted = channelKeyframes(keyframe)
 	const after = sorted[sorted.indexOf(keyframe) + 1]
-	if (!after) return '選んだキーフレームの後ろに同じチャンネルのキーフレームがない'
-	if (segmentKind(keyframe, after) !== 'bezier') return '選んだキーフレームから始まる区間が bezier ではない'
+	if (!after) return '選んだキーフレームの後ろに、同じチャンネルのキーフレームがありません。'
+	if (segmentKind(keyframe, after) !== 'bezier') return '選んだキーフレームから始まる区間が bezier ではありません。'
 	const gap = after.time - keyframe.time
 	const deltas = ([0, 1, 2] as const).map((i) => after.calc((['x', 'y', 'z'] as const)[i], 0) - keyframe.calc((['x', 'y', 'z'] as const)[i], 1))
 	const axis = deltas.reduce((best, d, i) => (Math.abs(d) > Math.abs(deltas[best]!) ? i : best), 0)
 	const delta = deltas[axis]!
-	if (gap <= 0 || Math.abs(delta) < 1e-6) return '区間の値が変わらないので形を取り出せない'
+	if (gap <= 0 || Math.abs(delta) < 1e-6) return '区間の値が変わらないため、形を取り出せません。'
 	const clamp01 = (x: number) => Math.min(1, Math.max(0, x))
 	const round = (x: number) => Math.round(x * 1000) / 1000
 	return {
@@ -331,8 +331,8 @@ function presetDialogComponent(): Vue.Component {
 			},
 			applyToSelection() {
 				const self = this as any
-				if (!self.current?.name.trim()) return Blockbench.showQuickMessage('名前を付けてから当てて', 2000)
-				if (selectedKeyframes().length === 0) return Blockbench.showQuickMessage('キーフレームを選んでから当てて', 2000)
+				if (!self.current?.name.trim()) return Blockbench.showQuickMessage('名前を付けてから適用してください。', 2000)
+				if (selectedKeyframes().length === 0) return Blockbench.showQuickMessage('キーフレームを選んでから適用してください。', 2000)
 				applyEasing({ name: self.current.name, curve: self.current.curve })
 			},
 			exportFile() {
@@ -347,9 +347,9 @@ function presetDialogComponent(): Vue.Component {
 						const merged = mergePresets(self.presets.map((p: Easing) => ({ name: p.name, curve: tidyCurve(p.curve) })), imported)
 						self.presets = merged.presets.map(editable)
 						self.index = self.presets.length ? 0 : -1
-						Blockbench.showQuickMessage(`${merged.added} 個を追加、${merged.replaced} 個を上書きした`, 2500)
+						Blockbench.showQuickMessage(`${merged.added} 個を追加し、${merged.replaced} 個を上書きしました。`, 2500)
 					} catch (error) {
-						Blockbench.showMessageBox({ title: 'プリセットの読み込み', message: `読み込めなかった：${(error as Error).message}` })
+						Blockbench.showMessageBox({ title: 'プリセットの読み込み', message: `読み込めませんでした：${(error as Error).message}` })
 					}
 				})
 			},
@@ -363,12 +363,12 @@ function presetDialogComponent(): Vue.Component {
 				<img :src="icon(preset.curve)" width="24" height="24" alt="">
 				<span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ preset.name.trim() || '${UNNAMED}' }}</span>
 			</li>
-			<li v-if="!presets.length" style="padding: 6px; opacity: 0.7;">保存したプリセットはまだない</li>
+			<li v-if="!presets.length" style="padding: 6px; opacity: 0.7;">保存したプリセットはまだありません。</li>
 		</ul>
 		<div style="display: flex; flex-wrap: wrap; gap: 4px;">
 			<button @click="addBezier">ベジェを追加</button>
 			<button @click="addFunction">関数を追加</button>
-			<button @click="fromSelection" title="選んだキーフレームから始まる bezier 区間の形を取り込む">選択区間から取り込む</button>
+			<button @click="fromSelection" title="選んだキーフレームから始まる bezier 区間の形を取り込みます。">選択区間から取り込む</button>
 			<button @click="remove" :disabled="!current">削除</button>
 			<button @click="exportFile" :disabled="!presets.length">書き出し</button>
 			<button @click="importFile">読み込み</button>
@@ -413,14 +413,14 @@ function presetDialogComponent(): Vue.Component {
 				</template>
 			</div>
 		</div>
-		<div style="position: relative; height: 34px; margin: 0 12px;" title="上は線形、下はこのイージング">
+		<div style="position: relative; height: 34px; margin: 0 12px;" title="上は線形、下はこのイージングです。">
 			<div style="position: absolute; left: 0; right: 0; top: 16px; border-top: 1px dashed var(--color-border);"></div>
 			<div :style="{ position: 'absolute', top: '2px', left: linearLeft, width: '10px', height: '10px', marginLeft: '-5px', borderRadius: '50%', background: 'var(--color-subtle_text)' }"></div>
 			<div :style="{ position: 'absolute', top: '20px', left: easedLeft, width: '12px', height: '12px', marginLeft: '-6px', borderRadius: '50%', background: 'var(--color-accent)' }"></div>
 		</div>
-		<div><button @click="applyToSelection">選択中のキーフレームに当てる</button></div>
+		<div><button @click="applyToSelection">選択中のキーフレームに適用</button></div>
 	</div>
-	<div v-else style="flex: 1; opacity: 0.7; padding-top: 8px;">左で追加するか、JSON を読み込む</div>
+	<div v-else style="flex: 1; opacity: 0.7; padding-top: 8px;">左で追加するか、JSON を読み込んでください。</div>
 </div>`,
 	} as Vue.Component
 }

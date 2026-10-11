@@ -32,6 +32,53 @@ Blockbench で作ったモデルとアニメーションを、Minecraft Java Edi
 - bezier の区間と、前後にキーフレームがない catmullrom の端では、back・elastic の行き過ぎが端の値で止まる。
 - 変換すると step の区間や、隣の区間の行き過ぎるイージングの形が変わってしまう場合は、変換しない。
 
+### variant
+
+Tools メニューの「variant を編集」で、テクスチャ違いなどの variant を作る。variant ごとに次を決める。
+
+- 名前：関数の名前になる。小文字・数字・`_` だけ。`default` は使えない。
+- テクスチャの差し替え：元のテクスチャと差し替えるテクスチャの組。差し替えるテクスチャはプロジェクトに読み込んでおき、UV の大きさを元と同じにする。
+- 適用する Bone：外した Bone は、この variant を適用しても今のモデルのまま残る。顔の Bone だけに適用する variant を作れば、それを当てても、体に当てた別の variant は戻らない。
+- 適用時の関数：適用した後に呼ぶ関数（任意）。
+
+ダイアログで variant を選ぶと、ビューポートがその variant の見た目になる。ダイアログを閉じると元に戻る。
+
+### locator
+
+Bone の下に Locator を置くと、アニメ中のその位置で関数を実行できる。Locator を右クリックして「locator の entity」を選ぶと、locator の位置に entity（当たり判定の mob や marker など）を置いておける。置く entity は、自分では動かないもの（marker や NoAI の mob）にする。entity は、locator が動いた tick と `tp` のときにだけ置き直す。そのため、重力で落ちたり押されたりして動く entity は、次に置き直すまでずれたままになる。
+
+### display
+
+outliner の「display を追加」で、ブロック表示（block_display）・アイテム表示（item_display）・テキスト表示（text_display）を追加する。display は設定を持つ Group として作られ、Bone と同じようにキーフレームで動かせる。設定は、Group を右クリックして「display の設定」で変える。
+
+- ブロック：`minecraft:oak_stairs[facing=east]` の形で指定する。ブロックは Group の pivot を角にして、+x・+y・+z の向きへ伸びる。
+- アイテム：item の ID、tag、表示の型（`none`・`thirdperson_righthand` など）を指定する。アイテムの中心が Group の pivot に来る。
+- テキスト：文字か JSON のテキストと、行の幅・背景色・文字の不透明度・影・透けて見えるか・揃えを指定する。テキストは下辺の中央が Group の pivot に来て、+z 側から読める向きに置かれる。JSON のテキストに Minecraft が読めない値（色の名前の誤りなど）があると、Minecraft は文字を表示しない。そのため、設定の確定と書き出しのときに知らせる。
+- 拡大と追加の NBT（`brightness` など）も指定できる。追加の NBT に `UUID`・`Tags`・`transformation` は書けない。
+- display の Group には Cube を入れない。
+- display の entity には `rigel.<リグ名>.<名前>` のタグが付く。ほかのデータパックから、手に持たせる item を差し替えるときなどに使う。
+- billboard は fixed だけで、ほかは使えない。fixed 以外では、Bone に付けた display の位置がカメラに合わせて回ってしまう。
+
+Blockbench 上では、ブロックとアイテムは大きさと向きが分かる箱と板で、テキストは Minecraft のフォントで描く。
+
+### テキストのフォント
+
+Blockbench 上の text_display は、Minecraft 1.20.4 のフォントを使い、Minecraft と同じ大きさ・位置・折り返しで描く。フォントは、Minecraft の公式ランチャーが置いたファイルから読む。そのため、1.20.4 を一度起動しておく必要がある。プラグインにもこのリポジトリにも、Minecraft のアセットは入っていない。
+
+File > Preferences > Settings の Preview で、次の 2 つを設定する。
+
+- 「text_display のプレビュー：.minecraft の場所」：`versions/1.20.4/1.20.4.jar` とアセット（`assets/indexes`・`assets/objects`）があるフォルダ。既定は、Windows では `%APPDATA%\.minecraft`、macOS では `~/Library/Application Support/minecraft`、Linux では `~/.minecraft`。
+- 「text_display のプレビュー：フォントを読むリソースパック」：独自のフォントを入れたリソースパックのフォルダか `.zip`。複数指定するときは `;` で区切る。後に書いたものほど優先される。
+
+初めてフォントを読むときは、Blockbench がフォルダごとに読み取りの許可を求める。「Always allow for this plugin」を選ぶと、次からは聞かれない。拒否した場合は、設定を変えるまでブラウザーのフォントで描く。
+
+- 対応する provider は `bitmap`・`space`・`reference`・`unihex`。`ttf` と `legacy_unicode` は読まないので、それらの provider の文字は欠けた文字の四角になる。
+- 背景の外へはみ出す文字（ascent の大きい bitmap、負の幅の space で戻した文字など）も、Minecraft と同じくはみ出したまま描く。
+- 文字どうしや下線が重なったところは、書いた順に後のものを上に描く。Minecraft では、どれが上に出るかはカメラからの距離で決まるので、見る位置によっては上下が入れ替わる。
+- `.minecraft` の `options.txt` から、言語（`translate` の訳に使う）、Unicode フォントを強制するかどうか、既定の背景の濃さを読む。
+- 読めないフォントやファイルがあると、件数と 1 件目を画面に出す。全件は開発者ツールのコンソールで確認できる。
+- `obfuscated` の文字は入れ替えずにそのまま描く。右から左へ書く文字（アラビア文字など）も並べ替えない。
+
 ### 書き出し（Minecraft 1.20.4）
 
 File メニューの「Export」から「Rigel のパックを書き出す」を選ぶ。開いたダイアログで次の項目を確かめて確定すると、データパックとリソースパックを書き出す。
@@ -44,7 +91,7 @@ File メニューの「Export」から「Rigel のパックを書き出す」を
 | リソースパック | 全リグで共有するリソースパックのフォルダ |
 | 温めの 1 かたまり | 1 tick に温める行数の上限。既定は 500 |
 | 間引く | 補間で再現できる tick への書き込みを、Bone ごとに省く。既定は切 |
-| ずれの上限 | 間引くときに許す、本来の姿勢とのずれ。位置（ブロック）と向き（度）で決め、拡大のずれ（割合）には向きの値をラジアンにして使う |
+| ずれの上限 | 間引くときに許す、本来の姿勢とのずれ。位置（ブロック）と向き（度）で決め、拡大のずれ（割合）には向きの値をラジアンにして使う。初期値はどちらも 0 |
 | 1 回の書き込みで補間する上限 | 1 回の書き込みで補間に任せる tick 数の上限。既定は 20 |
 | 温めの優先度 | アニメごとに `xhigh`・`high`・`low`。既定は `high` |
 | 間引き（アニメごと） | プロジェクトと同じ・間引かない・このアニメの値（位置と向き） |
@@ -55,7 +102,7 @@ File メニューの「Export」から「Rigel のパックを書き出す」を
 
 - `datapacks/<リグ名>/`：そのリグのデータパック。
 - `datapacks/rigel/`：全リグで共有するデータパック。どのリグを書き出しても同じ内容になる。
-- リソースパックの `assets/rigel/models/<リグ名>/` と `assets/rigel/textures/item/<リグ名>/`：Bone のモデルとテクスチャ。
+- リソースパックの `assets/rigel/models/<リグ名>/` と `assets/rigel/textures/item/<リグ名>/`：Bone のモデルとテクスチャ。variant のモデルは `assets/rigel/models/<リグ名>/<variant 名>/` に、元のモデルを親にしてテクスチャだけを差し替えた形で書く。
 - 元の item のモデル（`assets/minecraft/models/item/<item>.json` など）：このリグの overrides だけを入れ替える。ほかのリグや、元からある overrides は残す。ファイルが無いときは、平らなアイテムのモデルとして作る。
 
 データパックのフォルダは、空のときか、Rigel が書き出した印（`rigel.json`）があるときだけ作り直す。リソースパックの直下の `rigel.json` には、リグ名ごとに、書き出したプロジェクトの固有 ID を残す。同じリグ名で別のプロジェクトが書き出していたら、置き換えるかを尋ねてから書き出す。Blockbench で非表示にした Cube も書き出し、Export を切った Cube と Bone は書き出さない。
@@ -69,8 +116,13 @@ File メニューの「Export」から「Rigel のパックを書き出す」を
 | `rigel:<リグ名>/stop` | 今の姿勢のまま再生を終える |
 | `rigel:<リグ名>/pause` | 今の姿勢のまま止める。再生中でなければ失敗で返す |
 | `rigel:<リグ名>/restart` | pause で止めたところから再生を続ける。pause 中でなければ失敗で返す |
-| `rigel:<リグ名>/tp` | リグを実行位置へ動かし、実行者の向きにそろえる |
-| `rigel:<リグ名>/kill` | リグを消す |
+| `rigel:<リグ名>/tp` | リグを実行位置へ動かし、実行者の向きにそろえる。locator の entity も置き直す |
+| `rigel:<リグ名>/kill` | リグを消す。locator の entity も消す |
+| `rigel:<リグ名>/variant/<variant 名>` | variant を適用する。適用する Bone のモデルを差し替え、適用時の関数があれば呼ぶ |
+| `rigel:<リグ名>/variant/default` | variant で差し替えたモデルを元に戻す |
+| `rigel:<リグ名>/at_locator/<locator 名> {function:"<名前空間>:<パス>"}` | locator の今の位置で、リグの向きのまま関数を実行する。`@s` は呼び出し元のまま |
+
+locator の今の位置は、storage `rigel:<リグ名> Locators.<locator 名>` に `{x, y, z}` で入っている。値はリグの向きを基準にした左・上・前の距離なので、マクロで `^$(x) ^$(y) ^$(z)` として使える。locator の entity には `rigel.<リグ名>.<locator 名>` のタグが付く。関数名とタグに使う display と locator の名前は、小文字にしてから、英小文字・数字・`_` 以外の文字を `_` に変えたものになる。同じ名前になったときは、後のものに `_2`・`_3` と付ける。
 
 アニメの番号は、Blockbench のアニメ一覧の並び順で 0 から振る。番号と名前の対応は、`play` の関数の先頭にコメントで書く。once のアニメは最後まで再生すると初期姿勢に戻り、hold のアニメは最後の姿勢で止まる。
 

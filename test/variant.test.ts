@@ -176,19 +176,32 @@ describe('view plan', () => {
 	const bones = ['body', 'face']
 	const excluded = new Map([['bodyV', new Set(['face'])], ['faceV', new Set(['body'])]])
 	const plan = (input: Partial<Parameters<typeof viewPlan>[0]>) => {
-		const { byBone, other, headline } = viewPlan({ painting: false, keys: [], loop: 'hold', length: 2, ticks: 40, time: 0, bones, excluded, chosen: 'default', ...input })
-		return { byBone: Object.fromEntries(byBone), other, headline }
+		const { byBone, other, shown } = viewPlan({ painting: false, keys: [], loop: 'hold', length: 2, ticks: 40, time: 0, bones, excluded, chosen: 'default', ...input })
+		return { byBone: Object.fromEntries(byBone), other, shown: [...shown].sort() }
 	}
 
 	test('the paint view draws the original model whatever is chosen or keyed', () => {
-		const original = { byBone: { body: 'default', face: 'default' }, other: 'default', headline: 'default' }
+		const original = { byBone: { body: 'default', face: 'default' }, other: 'default', shown: ['default'] }
 		expect(plan({ painting: true, chosen: 'bodyV', keys: [{ time: 0, variant: 'faceV' }] })).toEqual(original)
 		expect(plan({ painting: false, chosen: 'bodyV' })).not.toEqual(original)
 	})
 
-	test('the headline is the keyframe at the playhead, or the chosen variant without keyframes', () => {
-		expect(plan({ keys: [{ time: 0, variant: 'bodyV' }, { time: 1, variant: 'faceV' }], time: 1.5, chosen: 'bodyV' }).headline).toBe('faceV')
-		expect(plan({ chosen: 'faceV' })).toEqual({ byBone: { body: 'default', face: 'faceV' }, other: 'faceV', headline: 'faceV' })
+	test('the panel marks every variant a bone wears while keyframes overlay one another', () => {
+		const keys = [{ time: 0, variant: 'bodyV' }, { time: 1, variant: 'faceV' }]
+		expect(plan({ keys, time: 0.5 }).shown).toEqual(['bodyV', 'faceV'])
+		expect(plan({ keys, time: 1.5 }).shown).toEqual(['bodyV', 'faceV'])
+		expect(plan({ keys: [...keys, { time: 1.5, variant: 'bodyV' }], time: 1.5 }).shown).toEqual(['bodyV', 'faceV'])
+		expect(plan({ keys: [...keys, { time: 1.5, variant: 'default' }], time: 1.5 }).shown).toEqual(['default'])
+	})
+
+	test('the panel marks default while a bone keeps the original model', () => {
+		expect(plan({ keys: [{ time: 0, variant: 'bodyV' }], time: 1 }).shown).toEqual(['bodyV', 'default'])
+		expect(plan({ chosen: 'faceV' })).toEqual({ byBone: { body: 'default', face: 'faceV' }, other: 'faceV', shown: ['default', 'faceV'] })
+		expect(plan({}).shown).toEqual(['default'])
+	})
+
+	test('the panel marks the variant the outside of every bone wears when the model has no bones', () => {
+		expect(plan({ bones: [], chosen: 'faceV' }).shown).toEqual(['faceV'])
 	})
 
 	const key = (time: number, variant: string) => ({ time, variant })
@@ -245,7 +258,7 @@ describe('view plan', () => {
 	})
 
 	test('a keyframe or a choice naming a variant that is gone draws the original model', () => {
-		expect(plan({ keys: [{ time: 0, variant: 'gone' }], time: 1 })).toEqual({ byBone: { body: 'default', face: 'default' }, other: 'default', headline: 'default' })
+		expect(plan({ keys: [{ time: 0, variant: 'gone' }], time: 1 })).toEqual({ byBone: { body: 'default', face: 'default' }, other: 'default', shown: ['default'] })
 		expect(plan({ chosen: 'gone' }).byBone).toEqual({ body: 'default', face: 'default' })
 	})
 })

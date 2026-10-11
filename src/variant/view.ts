@@ -9,7 +9,7 @@ type Material = THREE.Material
 interface Shown {
 	byBone: Record<string, string>
 	other: string
-	headline: string
+	shown: string[]
 	variants: Record<string, StoredVariant>
 }
 
@@ -26,8 +26,8 @@ export function chosenId(): string {
 	return id && readVariants(Project!).some((v) => v.uuid === id) ? id : DEFAULT_VARIANT_ID
 }
 
-export function shownId(): string {
-	return (Project && shown.get(Project)?.headline) || DEFAULT_VARIANT_ID
+export function shownIds(): ReadonlySet<string> {
+	return new Set((Project && shown.get(Project)?.shown) || [DEFAULT_VARIANT_ID])
 }
 
 export function choose(id: string): void {
@@ -58,7 +58,7 @@ function swapMaterials({ element }: { element: Cube }): void {
 function plan(project: ModelProject): Shown {
 	const variants = readVariants(project)
 	const animation = Modes.animate && BBAnimation.selected
-	const { byBone, other, headline } = viewPlan({
+	const drawn = viewPlan({
 		painting: Modes.paint,
 		keys: animation ? variantTimeline(animation) : [],
 		loop: animation ? animation.loop : 'once',
@@ -69,8 +69,8 @@ function plan(project: ModelProject): Shown {
 		excluded: new Map(variants.map((v) => [v.uuid, new Set(v.excluded)])),
 		chosen: chosenId(),
 	})
-	const used = new Set([...byBone.values(), other])
-	return { byBone: Object.fromEntries(byBone), other, headline, variants: Object.fromEntries(variants.filter((v) => used.has(v.uuid)).map((v) => [v.uuid, v])) }
+	const used = new Set([...drawn.byBone.values(), drawn.other])
+	return { byBone: Object.fromEntries(drawn.byBone), other: drawn.other, shown: [...drawn.shown], variants: Object.fromEntries(variants.filter((v) => used.has(v.uuid)).map((v) => [v.uuid, v])) }
 }
 
 function draw(): boolean {

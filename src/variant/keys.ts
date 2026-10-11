@@ -53,14 +53,15 @@ export interface ViewInput {
 export interface ViewPlan {
 	byBone: Map<string, string>
 	other: string
-	headline: string
+	shown: Set<string>
 }
 
 export function viewPlan({ painting, keys, loop, length, ticks, time, bones, excluded, chosen }: ViewInput): ViewPlan {
 	const known = (variant: string) => (variant === DEFAULT_VARIANT_ID || excluded.has(variant) ? variant : DEFAULT_VARIANT_ID)
-	if (painting) return { byBone: new Map(bones.map((b) => [b, DEFAULT_VARIANT_ID])), other: DEFAULT_VARIANT_ID, headline: DEFAULT_VARIANT_ID }
+	if (painting) return { byBone: new Map(bones.map((b) => [b, DEFAULT_VARIANT_ID])), other: DEFAULT_VARIANT_ID, shown: new Set([DEFAULT_VARIANT_ID]) }
 	const calls = variantCalls(loop, ticks, keys.map((k) => ({ time: k.time, variant: known(k.variant) })))
 	const timeline = [...calls].map(([tick, variant]) => ({ time: Math.min(tick / TICKS_PER_SECOND, length), variant }))
-	const headline = variantAt(timeline, time) ?? known(chosen)
-	return { byBone: variantPerBone(timeline, time, bones, excluded, known(chosen)), other: headline, headline }
+	const other = variantAt(timeline, time) ?? known(chosen)
+	const byBone = variantPerBone(timeline, time, bones, excluded, known(chosen))
+	return { byBone, other, shown: new Set(byBone.size > 0 ? byBone.values() : [other]) }
 }

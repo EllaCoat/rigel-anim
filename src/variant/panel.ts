@@ -6,7 +6,7 @@ import { keyframeVariant, notShowing, placeVariantKeyframe, selectedVariantKeyfr
 import { DEFAULT_VARIANT_ID, freeName, newVariant, readVariants, writeVariants, type StoredVariant } from './settings'
 import { allBones, boneRows, boneTree, checkOf, onlyUnder, setApplied, type BoneNode, type Check, type GroupSource } from './tree'
 import { vue } from './vue'
-import { choose, chosenId, refreshView, shownId } from './view'
+import { choose, chosenId, refreshView, shownIds } from './view'
 
 const PANEL_ID = 'rigel_variants'
 const CHECK_ICON: Record<Check, string> = { all: 'check_box', some: 'indeterminate_check_box', none: 'check_box_outline_blank' }
@@ -100,10 +100,10 @@ function keyLines(variants: StoredVariant[]): KeyLine[] | undefined {
 function currentModel(): PanelModel {
 	const variants = variantsOf()
 	const current = currentOf(variants)
-	const shown = shownId()
+	const shown = shownIds()
 	const rows: Row[] = [
-		{ id: DEFAULT_VARIANT_ID, name: DEFAULT_VARIANT_ID, selected: !current, shown: shown === DEFAULT_VARIANT_ID },
-		...variants.map((v) => ({ id: v.uuid, name: v.name || '(名前なし)', selected: v === current, shown: v.uuid === shown })),
+		{ id: DEFAULT_VARIANT_ID, name: DEFAULT_VARIANT_ID, selected: !current, shown: shown.has(DEFAULT_VARIANT_ID) },
+		...variants.map((v) => ({ id: v.uuid, name: v.name || '(名前なし)', selected: v === current, shown: shown.has(v.uuid) })),
 	]
 	const model: PanelModel = { rows, textures: Texture.all.map((t) => ({ uuid: t.uuid, name: t.name })), keys: keyLines(variants), keySelected: selectedVariantKeyframes().length > 0 }
 	if (current) {

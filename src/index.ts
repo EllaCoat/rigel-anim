@@ -1,4 +1,4 @@
-import { registerDisplayPreview, unregisterDisplayPreview } from './display/preview'
+import { refreshAllDisplayPreviews, registerDisplayPreview, unregisterDisplayPreview } from './display/preview'
 import { registerDisplaySettings, unregisterDisplaySettings } from './display/settings'
 import { registerDisplayUi, unregisterDisplayUi } from './display/ui'
 import { registerEasingKeyframes, unregisterEasingKeyframes } from './easing/keyframes'
@@ -35,7 +35,7 @@ BBPlugin.register(PLUGIN_ID, {
 		registerVariantUi()
 		registerDisplayUi()
 		registerLocatorUi()
-		registerFontSettings()
+		registerFontSettings(refreshAllDisplayPreviews)
 		registerDisplayPreview()
 	},
 	onunload() {

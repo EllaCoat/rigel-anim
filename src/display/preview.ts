@@ -1,6 +1,7 @@
 import type { DisplaySettings } from '../export/types'
 import { textJson } from '../export/display'
 import { isRigelProject } from '../easing/keyframes'
+import { drawTextDisplay, getFontLibrary, layoutTextDisplay, type FontLibrary } from '../font'
 import { readDisplay } from './settings'
 
 // Blockbench's three.js; the types declare it as a UMD global, which modules cannot use as a value.
@@ -15,19 +16,40 @@ let originalSetup: Setup | undefined
 const pending = new WeakMap<Group, number>()
 let serial = 0
 
-export interface TextImage {
+interface TextImage {
 	canvas: HTMLCanvasElement
 	// Text pixels, as Minecraft lays them out: W is the longest line, H is 10 per line.
 	width: number
 	height: number
+	// The text pixels the canvas covers: the background's u from -1 to W and v from -1 to H, and whatever is drawn past it.
+	left: number
+	top: number
+	right: number
+	bottom: number
 }
 
-export type TextDrawer = (display: Extract<DisplaySettings, { kind: 'text' }>) => Promise<TextImage>
-let drawText: TextDrawer = fallbackText
+type TextSettings = Extract<DisplaySettings, { kind: 'text' }>
+let reported = ''
+const warned = new WeakSet<FontLibrary>()
 
-export function setTextDrawer(drawer: TextDrawer | undefined): void {
-	drawText = drawer ?? fallbackText
-	refreshAll()
+async function drawText(display: TextSettings): Promise<TextImage> {
+	const loaded = await getFontLibrary()
+	if ('error' in loaded) {
+		if (loaded.error !== reported) Blockbench.showQuickMessage(`${loaded.error} 標準のフォントで描きます。`, 4000)
+		reported = loaded.error
+		return fallbackText(display)
+	}
+	reported = ''
+	const { warnings } = loaded.library
+	if (warnings.length > 0 && !warned.has(loaded.library)) {
+		warned.add(loaded.library)
+		for (const warning of warnings) console.warn(`Rigel: ${warning}`)
+		Blockbench.showQuickMessage(`フォントの読み込みで ${warnings.length} 件の問題がありました。1 件目：${warnings[0]}（全件は開発者ツールのコンソールにあります）`, 6000)
+	}
+	const layout = layoutTextDisplay(loaded.library, display)
+	const drawn = drawTextDisplay(layout, (width, height) => Object.assign(document.createElement('canvas'), { width, height }))
+	const { left, top, texelsPerPixel } = drawn
+	return { canvas: drawn.canvas, width: layout.width, height: layout.height, left, top, right: left + drawn.width / texelsPerPixel, bottom: top + drawn.height / texelsPerPixel }
 }
 
 function plainText(text: string): string {
@@ -45,7 +67,7 @@ function plainText(text: string): string {
 }
 
 // Without Minecraft's font: the browser's, at the size of Minecraft's 8-pixel glyphs.
-async function fallbackText(display: Extract<DisplaySettings, { kind: 'text' }>): Promise<TextImage> {
+function fallbackText(display: TextSettings): TextImage {
 	const scale = 4
 	const canvas = document.createElement('canvas')
 	const ctx = canvas.getContext('2d')!
@@ -71,7 +93,7 @@ async function fallbackText(display: Extract<DisplaySettings, { kind: 'text' }>)
 		const u = display.alignment === 'left' ? 0 : display.alignment === 'right' ? width - w : width / 2 - w / 2
 		ctx.fillText(line, (u + 1) * scale, (i * 10 + 1) * scale)
 	})
-	return { canvas, width, height }
+	return { canvas, width, height, left: -1, top: -1, right: width, bottom: height }
 }
 
 function texturedPlane(canvas: HTMLCanvasElement, width: number, height: number, side: THREE.Side): THREE.Mesh {
@@ -122,9 +144,10 @@ function textPreview(group: Group, display: Extract<DisplaySettings, { kind: 'te
 	pending.set(group, token)
 	void drawText(display).then((image) => {
 		if (pending.get(group) !== token) return
-		// The image covers u from -1 to W and v from -1 to H; v = H sits on the origin, centred on W / 2 - 1 / 2.
-		const plane = texturedPlane(image.canvas, (image.width + 1) * TEXT_PIXEL, (image.height + 1) * TEXT_PIXEL, three.FrontSide)
-		plane.position.set(TEXT_PIXEL / 2, ((image.height + 1) * TEXT_PIXEL) / 2, 0)
+		// DisplayRenderer puts text pixel (u, v) at x = u + 1 - W / 2 and y = H - v, in text pixels from the origin.
+		const { left, top, right, bottom } = image
+		const plane = texturedPlane(image.canvas, (right - left) * TEXT_PIXEL, (bottom - top) * TEXT_PIXEL, three.FrontSide)
+		plane.position.set(((left + right) / 2 + 1 - image.width / 2) * TEXT_PIXEL, (image.height - (top + bottom) / 2) * TEXT_PIXEL, 0)
 		root.add(plane)
 	})
 }
@@ -145,7 +168,7 @@ export function refreshDisplayPreview(group: Group): void {
 	mesh.add(root)
 }
 
-function refreshAll(): void {
+export function refreshAllDisplayPreviews(): void {
 	if (Project) for (const group of Group.all) refreshDisplayPreview(group)
 }
 
@@ -159,7 +182,7 @@ export function registerDisplayPreview(): void {
 		refreshDisplayPreview(group)
 		return result
 	}
-	refreshAll()
+	refreshAllDisplayPreviews()
 }
 
 export function unregisterDisplayPreview(): void {

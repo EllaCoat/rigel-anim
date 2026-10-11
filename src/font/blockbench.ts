@@ -12,13 +12,15 @@ let cached: { key: string; result: Promise<LibraryResult> } | undefined
 export function defaultMinecraftDir(): string {
 	if (typeof SystemInfo === 'undefined') return ''
 	const { platform, appdata_directory, home_directory } = SystemInfo
-	if (platform === 'win32') return `${appdata_directory}/.minecraft`
+	if (platform === 'win32') return `${appdata_directory}\\.minecraft`
 	return platform === 'darwin' ? `${home_directory}/Library/Application Support/minecraft` : `${home_directory}/.minecraft`
 }
 
-export function registerFontSettings(): void {
+// onChange: called after a setting changes, once the next getFontLibrary reads the new settings.
+export function registerFontSettings(onChange?: () => void): void {
 	const reset = () => {
 		cached = undefined
+		onChange?.()
 	}
 	registered = [
 		new Setting(MINECRAFT_DIR_SETTING, {
@@ -93,10 +95,11 @@ async function decodePng(bytes: Uint8Array): Promise<DecodedImage> {
 	}
 }
 
-async function load(sources: FontSources): Promise<LibraryResult> {
+// denied: the user refused the permission dialog, which would otherwise come back on every preview refresh.
+async function load(sources: FontSources): Promise<LibraryResult & { denied?: true }> {
 	try {
 		const fs = scopedReadFs([sources.minecraftDir, ...sources.resourcePacks])
-		if (typeof fs === 'string') return { error: fs }
+		if (typeof fs === 'string') return { error: fs, denied: true }
 		return await loadFontLibrary({ fs, sources, decodeImage: decodePng })
 	} catch (error) {
 		return { error: `Minecraft のフォントを読めませんでした: ${(error as Error).message}` }
@@ -104,8 +107,8 @@ async function load(sources: FontSources): Promise<LibraryResult> {
 }
 
 /**
- * The font library for the current settings. It is loaded once and reused until a setting changes; a failure is
- * returned with its reason and tried again on the next call.
+ * The font library for the current settings. It is loaded once and reused until a setting changes. A failure is
+ * returned with its reason and tried again on the next call, except a refused permission, which waits for a setting change.
  */
 export function getFontLibrary(): Promise<LibraryResult> {
 	const sources = readFontSources()
@@ -116,7 +119,7 @@ export function getFontLibrary(): Promise<LibraryResult> {
 		entry = { key, result }
 		cached = entry
 		void result.then((loaded) => {
-			if ('error' in loaded && cached === entry) cached = undefined
+			if ('error' in loaded && !('denied' in loaded) && cached === entry) cached = undefined
 		})
 	}
 	return entry.result

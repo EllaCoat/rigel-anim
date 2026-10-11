@@ -236,7 +236,9 @@ function fold(uuid: string): void {
 }
 
 const CSS = `
+#panel_${PANEL_ID} .rigel-variants { overflow-y: auto; }
 .rigel-variants { padding: 6px 8px 10px; display: flex; flex-direction: column; gap: 6px; }
+.rigel-variants > * { flex: none; }
 .rigel-variants .rv-bar { display: flex; align-items: center; gap: 2px; }
 .rigel-variants .rv-bar .tool.disabled { opacity: 0.35; pointer-events: none; }
 .rigel-variants ul { list-style: none; margin: 0; padding: 0; }

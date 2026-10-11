@@ -174,6 +174,19 @@ describe('display', () => {
 		expect(blockStateNbt('stone[bad]')).toBeUndefined()
 	})
 
+	test('plain text that reads as a JSON number, true, false or null stays the text as written', () => {
+		for (const plain of ['true', 'false', 'null', '1.50']) expect(textJson(plain)).toBe(JSON.stringify(plain))
+		expect(textJson('"quoted"')).toBe('"quoted"')
+	})
+
+	test('JSON text that Minecraft cannot read, like an unknown color, is reported', () => {
+		const withText = (json: string) => problems(rig({ bones: [bone('Body', 0), bone('Label', undefined, { ...text, text: json })] }))
+		expect(withText('{"text":"a","color":"redd"}')).toHaveLength(1)
+		expect(withText('{"text":"a","font":"Bad Font"}')).toHaveLength(1)
+		expect(withText('{"text":"a","extra":[]}')).toHaveLength(1)
+		expect(withText('[{"text":"a","color":"gold"},{"text":"b","font":"check:icons"}]')).toHaveLength(0)
+	})
+
 	test('SNBT is checked for one balanced compound', () => {
 		expect(snbtProblem('{a:1,b:[1,2],c:"}"}')).toBeUndefined()
 		for (const s of ['a:1', '{a:[1}', '{a:1}{b:2}', "{a:'x}"]) expect(snbtProblem(s)).toBeString()

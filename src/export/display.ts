@@ -1,3 +1,4 @@
+import { parseText } from '../font/component'
 import { ITEM_DISPLAY_MODES, TEXT_ALIGNMENTS, type DisplaySettings } from './types'
 
 export const RESOURCE_ID = /^[a-z0-9_.-]+:[a-z0-9_./-]+$/
@@ -84,11 +85,13 @@ export function blockStateNbt(block: string): string | undefined {
 
 // Minecraft drops text that does not parse as JSON without an error, keeping the old text.
 export function textJson(text: string): string {
+	let value: unknown
 	try {
-		return JSON.stringify(JSON.parse(text))
+		value = JSON.parse(text)
 	} catch {
 		return JSON.stringify(text)
 	}
+	return typeof value === 'string' || (typeof value === 'object' && value !== null) ? JSON.stringify(value) : JSON.stringify(text)
 }
 
 const quoted = (s: string) => `'${s.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`
@@ -120,6 +123,7 @@ export function displayProblems(name: string, d: DisplaySettings): string[] {
 		if (!Number.isInteger(d.lineWidth) || d.lineWidth < 1) problems.push(`${at}: 行の幅は 1 以上の整数にしてください。`)
 		if (!Number.isInteger(d.textOpacity) || d.textOpacity < 0 || d.textOpacity > 255) problems.push(`${at}: 文字の不透明度は 0〜255 にしてください。`)
 		if (!TEXT_ALIGNMENTS.includes(d.alignment)) problems.push(`${at}: 揃え ${d.alignment} は使えません。`)
+		parseText(d.text, (message) => problems.push(`${at}: Minecraft はこのテキストを読めず、文字を表示しません（${message}）。`))
 	}
 	return problems
 }

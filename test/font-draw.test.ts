@@ -53,7 +53,6 @@ describe('size', () => {
 		expect([two.width, two.height]).toEqual([8, 42])
 	})
 
-	// DisplayRenderer draws the glyphs over the background quad without clipping them to it.
 	test('a glyph above the line grows the canvas upwards', () => {
 		const result = raster('T')
 		expect([result.left, result.top]).toEqual([-1, -3])

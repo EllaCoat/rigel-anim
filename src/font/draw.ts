@@ -34,7 +34,7 @@ interface Bounds {
 
 /**
  * The whole font pixels everything is drawn in: the background quad (u from -1 to the width, v from -1 to the height) and
- * every glyph with its bold copy, shadow and lines. DisplayRenderer clips none of them to the background.
+ * every glyph with its bold copy, shadow and lines.
  */
 function drawnBounds(layout: TextLayout): Bounds {
 	const bounds = { left: -1, top: -1, right: layout.width, bottom: layout.height }
@@ -204,10 +204,7 @@ export function rasterizeTextDisplay(layout: TextLayout): Raster {
 	return crop(surface, layout)
 }
 
-/**
- * Glyph quads cover their whole cell, transparent columns too, so the drawing is cut down to the background's rectangle
- * and every texel drawn outside it, in whole font pixels.
- */
+/** The drawing cut down to the background's rectangle and every texel drawn outside it, in whole font pixels. */
 function crop(surface: Surface, layout: TextLayout): Raster {
 	const { scale, bounds, width, data } = surface
 	let x0 = (-1 - bounds.left) * scale

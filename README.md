@@ -54,7 +54,7 @@ outliner の「display を追加」で、ブロック表示（block_display）�
 - ブロック：`minecraft:oak_stairs[facing=east]` の形で指定する。ブロックは Group の pivot を角にして、+x・+y・+z の向きへ伸びる。
 - アイテム：item の ID、tag、表示の型（`none`・`thirdperson_righthand` など）を指定する。アイテムの中心が Group の pivot に来る。
 - テキスト：文字か JSON のテキストと、行の幅・背景色・文字の不透明度・影・透けて見えるか・揃えを指定する。テキストは下辺の中央が Group の pivot に来て、+z 側から読める向きに置かれる。JSON のテキストに Minecraft が読めない値（色の名前の誤りなど）があると、Minecraft は文字を表示しない。そのため、設定の確定と書き出しのときに知らせる。
-- 拡大と追加の NBT（`brightness` など）も指定できる。追加の NBT に `UUID`・`Tags`・`transformation` は書けない。
+- 拡大と追加の NBT（`brightness` など）も指定できる。追加の NBT に `id`・`UUID`・`Tags`・`Passengers`・`transformation`・`interpolation_duration` は書けない。
 - display の Group には Cube を入れない。
 - display の entity には `rigel.<リグ名>.<名前>` のタグが付く。ほかのデータパックから、手に持たせる item を差し替えるときなどに使う。
 - billboard は fixed だけで、ほかは使えない。fixed 以外では、Bone に付けた display の位置がカメラに合わせて回ってしまう。
@@ -122,7 +122,14 @@ File メニューの「Export」から「Rigel のパックを書き出す」を
 | `rigel:<リグ名>/variant/default` | variant で差し替えたモデルを元に戻す |
 | `rigel:<リグ名>/at_locator/<locator 名> {function:"<名前空間>:<パス>"}` | locator の今の位置で、リグの向きのまま関数を実行する。`@s` は呼び出し元のまま |
 
-locator の今の位置は、storage `rigel:<リグ名> Locators.<locator 名>` に `{x, y, z}` で入っている。値はリグの向きを基準にした左・上・前の距離なので、マクロで `^$(x) ^$(y) ^$(z)` として使える。locator の entity には `rigel.<リグ名>.<locator 名>` のタグが付く。関数名とタグに使う display と locator の名前は、小文字にしてから、英小文字・数字・`_` 以外の文字を `_` に変えたものになる。同じ名前になったときは、後のものに `_2`・`_3` と付ける。
+locator の今の位置は、storage `rigel:<リグ名> Locators.<locator 名>` に `{x, y, z}` で入っている。値はリグの向きを基準にした左・上・前の距離なので、マクロで `^$(x) ^$(y) ^$(z)` として使える。locator の entity には `rigel.<リグ名>.<locator 名>` のタグが付く。関数名とタグに使う display と locator の名前は、次の順に変換したものになる。
+
+1. 小文字にする。
+2. 英小文字・数字・`_` 以外の文字が続く所を、1 つの `_` に変える。
+3. 前後の `_` を除く。何も残らないときは `unnamed` にする。
+4. 同じ名前になったときは、後のものに `_2`・`_3` と付ける。
+
+たとえば `Hand (L)` は `hand_l` に、日本語だけの名前は `unnamed` になる。
 
 アニメの番号は、Blockbench のアニメ一覧の並び順で 0 から振る。番号と名前の対応は、`play` の関数の先頭にコメントで書く。once のアニメは最後まで再生すると初期姿勢に戻り、hold のアニメは最後の姿勢で止まる。
 

@@ -1,11 +1,11 @@
 // A vanilla dedicated server for benchmarks (version from target.ts), kept outside the repository and
 // away from the player's own Minecraft folder. Commands go through the server's stdin and results are
 // read from its log lines, so only a server started by this module can be driven.
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { TARGET } from './target'
 
 export const MC_VERSION = TARGET.version
@@ -55,6 +55,19 @@ export function javaPath(): string {
 	const jdk = existsSync(JAVA_DIR) ? readdirSync(JAVA_DIR).find((d) => d.startsWith(`jdk-${JAVA_MAJOR}`)) : undefined
 	if (!jdk) throw new Error(`no JDK ${JAVA_MAJOR} under ${JAVA_DIR}; run setup or set RIGEL_BENCH_JAVA`)
 	return join(JAVA_DIR, jdk, 'bin', 'java.exe')
+}
+
+// Heap in use after two full collections, in KiB.
+export function heapUsedKiB(pid: number): number {
+	const jcmd = join(dirname(javaPath()), 'jcmd.exe')
+	for (let i = 0; i < 2; i++) {
+		const gc = spawnSync(jcmd, [String(pid), 'GC.run'], { encoding: 'utf8' })
+		if (gc.status !== 0) throw new Error(`jcmd GC.run failed:\n${gc.stdout}${gc.stderr}`)
+	}
+	const out = spawnSync(jcmd, [String(pid), 'GC.heap_info'], { encoding: 'utf8' }).stdout
+	const used = out.match(/used (\d+)K/)
+	if (!used) throw new Error(`could not read heap usage:\n${out}`)
+	return Number(used[1])
 }
 
 // Downloads Temurin and server.jar (both checked against the published digests) and writes the server

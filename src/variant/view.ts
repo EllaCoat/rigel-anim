@@ -5,7 +5,6 @@ import { DEFAULT_VARIANT_ID, readVariants, type StoredVariant } from './settings
 
 type Material = THREE.Material
 
-// What the viewport draws: the variant of each bone (by group uuid), and the variants themselves.
 interface Shown {
 	byBone: Record<string, string>
 	other: string
@@ -55,8 +54,6 @@ function swapMaterials({ element }: { element: Cube }): void {
 	mesh.material = Array.isArray(mesh.material) ? mesh.material.map(swap) : swap(mesh.material)
 }
 
-// In the animation view, each bone wears what the variant keyframes at the playhead give it (see variantPerBone);
-// everything else shows the variant chosen in the panel.
 function plan(project: ModelProject): Shown {
 	const variants = readVariants(project)
 	const animation = Modes.animate && BBAnimation.selected

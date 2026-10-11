@@ -26,13 +26,11 @@ export function keyframeVariant(keyframe: BBKeyframe): string {
 	return typeof id === 'string' && id ? id : DEFAULT_VARIANT_ID
 }
 
-// The keyframes the preview follows; none when the track is muted.
 export function variantTimeline(animation: BBAnimation): TimedVariant[] {
 	if (effectsOf(animation)?.muted.variant) return []
 	return variantKeyframes(animation).map((kf) => ({ time: kf.time, variant: keyframeVariant(kf) }))
 }
 
-// The keyframes that do not show the variant yet.
 export function notShowing(keyframes: BBKeyframe[], variant: string): BBKeyframe[] {
 	return keyframes.filter((kf) => keyframeVariant(kf) !== variant)
 }

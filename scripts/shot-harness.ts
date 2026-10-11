@@ -7,7 +7,6 @@ import { blockbenchCamera, FOV, type Pose, type View } from './shot-spec'
 import { callVariant, ORIGINAL, viewCalls, type Worn } from './shot-variants'
 
 const TICKS_PER_SECOND = 20
-// What each bone wears in Minecraft, where the variant functions of every view so far have left it.
 let worn: Worn = new Map()
 type Stackable = { stackAnimations(animations: BBAnimation[], inLoop: boolean): void }
 
@@ -58,9 +57,6 @@ function applyPose(pose: Pose | undefined): void {
 	;(Animator as unknown as Stackable).stackAnimations([animation], false)
 }
 
-// Puts on each bone what the variant functions of the view leave it wearing in Minecraft, in the order they are called.
-// The plugin's own preview is left on the original model (open mutes the keyframes), so each Cube draws its own
-// textures first, and then the textures of the variant its bone wears replace them.
 function applyVariants(view: View): void {
 	const variants = readVariants(Project!)
 	const excluded = new Map(variants.map((v) => [v.name, new Set(v.excluded)]))

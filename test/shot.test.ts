@@ -134,7 +134,6 @@ describe('cameras', () => {
 })
 
 describe('variants a view leaves on the rig', () => {
-	// The synthetic rig: alt leaves the tail alone, tip changes only the hand and the gem.
 	const bones = ['body', 'arm', 'hand', 'tail', 'tailtip', 'gem']
 	const excluded = new Map([['alt', new Set(['tail'])], ['tip', new Set(['body', 'arm', 'tail', 'tailtip'])]])
 	const wear = (calls: string[], from: Worn = new Map()) => {
@@ -170,7 +169,6 @@ describe('variants a view leaves on the rig', () => {
 		const frames = new Map([[0, 'alt'], [10, 'tip']])
 		let worn: Worn = new Map()
 		for (const name of viewCalls({ pose: { tick: 12 } }, frames, 30)) worn = callVariant(worn, name, excluded, bones)
-		// A view with no pose calls no variant, so the rig keeps the colours of the pose view before it.
 		for (const name of viewCalls({}, new Map(), 0)) worn = callVariant(worn, name, excluded, bones)
 		expect(bones.map((b) => worn.get(b) ?? 'default').join(' ')).toBe('alt alt tip default alt tip')
 	})

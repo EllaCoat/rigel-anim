@@ -122,7 +122,6 @@ describe('keyframes that change', () => {
 
 describe('variants by bone', () => {
 	const bones = ['body', 'face']
-	// bodyV leaves the face alone, faceV leaves the body alone.
 	const excluded = new Map([['bodyV', new Set(['face'])], ['faceV', new Set(['body'])]])
 	const key = (time: number, variant: string) => ({ time, variant })
 	const wear = (keys: ReturnType<typeof key>[], time: number, chosen = 'default') => Object.fromEntries(variantPerBone(keys, time, bones, excluded, chosen))

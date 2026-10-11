@@ -17,11 +17,6 @@ export function variantAt(keys: readonly TimedVariant[], time: number): string |
 	return (before ?? sorted.at(-1))!.variant
 }
 
-// The variant each bone wears at `time`. A variant is applied only to the bones it does not exclude, so a bone wears
-// the last keyframe at or before `time` that applies to it, and the original model comes from `default`. Where no
-// keyframe up to `time` applies to a bone, the last one in the animation does, as in variantAt. A bone no keyframe
-// applies to wears `fallback`, the variant chosen in the panel, unless that one excludes it.
-// excluded: the bones each variant leaves alone, by variant uuid; every keyframe names `default` or one of them.
 export function variantPerBone(
 	keys: readonly TimedVariant[],
 	time: number,
@@ -41,25 +36,20 @@ export function variantPerBone(
 }
 
 export interface ViewInput {
-	// The paint view draws the project's own textures, which are what painting writes to.
 	painting: boolean
 	keys: readonly TimedVariant[]
 	time: number
 	bones: readonly string[]
 	excluded: ReadonlyMap<string, ReadonlySet<string>>
-	// The variant chosen in the panel.
 	chosen: string
 }
 
 export interface ViewPlan {
 	byBone: Map<string, string>
-	// For cubes outside every bone.
 	other: string
-	// The variant the panel marks as shown: the keyframe at the playhead, or the chosen one.
 	headline: string
 }
 
-// What the viewport draws. A keyframe or a choice that names a variant that does not exist draws the original model.
 export function viewPlan({ painting, keys, time, bones, excluded, chosen }: ViewInput): ViewPlan {
 	const known = (variant: string) => (variant === DEFAULT_VARIANT_ID || excluded.has(variant) ? variant : DEFAULT_VARIANT_ID)
 	if (painting) return { byBone: new Map(bones.map((b) => [b, DEFAULT_VARIANT_ID])), other: DEFAULT_VARIANT_ID, headline: DEFAULT_VARIANT_ID }

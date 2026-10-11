@@ -1,4 +1,5 @@
 import { isRigelProject } from '../easing/keyframes'
+import { TICKS_PER_SECOND } from '../bake/sample'
 import type { TimedVariant } from './keys'
 import { DEFAULT_VARIANT_ID } from './settings'
 import { vue } from './vue'
@@ -47,15 +48,16 @@ export function setKeyframeVariants(keyframes: BBKeyframe[], variant: string): v
 	Animator.preview()
 }
 
-// Puts a keyframe for the variant at the playhead, or changes the one there. It is not selected, so that picking
-// the next variant in the panel does not change it.
+// Puts a keyframe for the variant on the tick nearest the playhead, or changes the one there, and moves the playhead
+// to that tick. It is not selected, so that picking the next variant in the panel does not change it.
 export function placeVariantKeyframe(variant: string): void {
 	const animation = BBAnimation.selected
 	if (!animation) return
 	const effects = effectsOf(animation) ?? ((animation.animators as unknown as Record<string, unknown>).effects = new EffectAnimator(animation)) as unknown as Effects
 	effects.addToTimeline()
-	const time = Timeline.snapTime(Timeline.time)
-	const there = (effects.variant ?? []).find((kf) => Math.abs(kf.time - time) <= Timeline.getStep() / 2)
+	const time = Math.min(Math.round(Timeline.time * TICKS_PER_SECOND) / TICKS_PER_SECOND, animation.length)
+	Timeline.setTime(time)
+	const there = (effects.variant ?? []).find((kf) => Math.round(kf.time * TICKS_PER_SECOND) === Math.round(time * TICKS_PER_SECOND))
 	if (there) {
 		const changing = notShowing([there], variant)
 		if (changing.length > 0) setKeyframeVariants(changing, variant)

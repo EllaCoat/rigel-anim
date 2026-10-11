@@ -160,12 +160,16 @@ function change(a: ArrayLike<number>, b: ArrayLike<number>): { rotation: number;
 	return { rotation, position: Math.hypot(a[3]! - b[3]!, a[7]! - b[7]!, a[11]! - b[11]!) }
 }
 
+// Writes of up to this many ticks that reach a client between two of its ticks (a frame over 100 ms, a server catching
+// up) keep the pose right: the client applies only the last of them.
+const MERGED = 3
+
 // Frames where one bone's runs end, from 0 to the last frame. The run from k to j is one write at frame k + 1 with the
 // pose of frame j, interpolated over j − k ticks, and covers at most `span` ticks. poses: each frame's written values.
-// A client that takes in two ticks' writes between two of its ticks keeps only the second, and starts the run from
-// where the one-tick run before it started. The run then has to hold from there too, give or take its own largest
-// change in a tick, so that a bone hidden or moved at once is not shown going there over the whole run. The first run,
-// whose start is the pose before play or the end of the loop, lasts one tick.
+// When the writes of the one-tick runs right before it are lost, the client starts the run from where they started. The
+// run then has to hold from there too, give or take its own largest change in a tick for each lost write, so that a bone
+// hidden or moved at once is not shown going there over the whole run. The first runs, whose start is the pose before
+// play or the end of the loop, last one tick.
 export function runEnds(poses: ArrayLike<number>[], tolerance: Tolerance, span: number): number[] {
 	const radians = tolerance.rotation * DEGREE
 	const splits = poses.map(split)
@@ -178,13 +182,15 @@ export function runEnds(poses: ArrayLike<number>[], tolerance: Tolerance, span: 
 	const ends = [0]
 	let k = 0
 	while (k < last) {
-		const afterOneTick = k > 0 && k - ends[ends.length - 2]! === 1
+		const starts: number[] = []
+		for (let i = ends.length - 1; i > 0 && starts.length < MERGED - 1 && ends[i]! - ends[i - 1]! === 1; i--) starts.push(ends[i - 1]!)
 		let j = k + 1
-		let fastest = k > 0 ? steps[k]! : { rotation: 0, position: 0 }
-		while (k > 0 && j < last && j + 1 - k <= span) {
+		let fastest = steps[k]!
+		while (k >= MERGED - 1 && j < last && j + 1 - k <= span) {
 			fastest = { rotation: Math.max(fastest.rotation, steps[j]!.rotation), position: Math.max(fastest.position, steps[j]!.position) }
 			if (!holds(k, k, j + 1, tolerance.position, radians)) break
-			if (afterOneTick && !holds(k - 1, k, j + 1, tolerance.position + fastest.position, radians + fastest.rotation)) break
+			const lost = (from: number) => holds(from, k, j + 1, tolerance.position + (k - from) * fastest.position, radians + (k - from) * fastest.rotation)
+			if (!starts.every(lost)) break
 			j++
 		}
 		ends.push(j)

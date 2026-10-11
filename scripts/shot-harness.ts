@@ -1,4 +1,6 @@
 // Runs inside the development Blockbench: mc-shot.ts bundles this file and injects it as __rigelShot.
+import { readVariants } from '../src/variant/settings'
+import { previewVariant } from '../src/variant/ui'
 import { blockbenchCamera, FOV, type Pose, type View } from './shot-spec'
 
 const TICKS_PER_SECOND = 20
@@ -17,7 +19,19 @@ async function open(model: any, name: string) {
 	for (const node of [...Outliner.elements, ...Group.all]) (node as { visibility: boolean }).visibility = true
 	Canvas.updateVisibility()
 	Modes.options.animate!.select()
+	await textDrawn()
 	return { format: Format.id, elements: Outliner.elements.length }
+}
+
+// The plugin draws text displays once Minecraft's font has loaded, a while after the groups are made.
+async function textDrawn(timeoutMs = 60_000): Promise<void> {
+	const deadline = Date.now() + timeoutMs
+	const waiting = () =>
+		Group.all.filter((g) => (g as unknown as { rigel_display?: { kind?: string } }).rigel_display?.kind === 'text' && !(g.mesh as THREE.Object3D).getObjectByName('rigel_display_preview')?.children.length)
+	while (waiting().length > 0) {
+		if (Date.now() > deadline) throw new Error(`text displays not drawn: ${waiting().map((g) => g.name).join(', ')}`)
+		await new Promise((r) => setTimeout(r, 100))
+	}
 }
 
 // The pose the export samples for this tick (src/bake/sample.ts), or the rest pose.
@@ -33,9 +47,16 @@ function applyPose(pose: Pose | undefined): void {
 	;(Animator as unknown as Stackable).stackAnimations([animation], false)
 }
 
+function applyVariant(name: string | undefined): void {
+	const variant = name === undefined ? undefined : readVariants(Project!).find((v) => v.name === name)
+	if (name !== undefined && !variant) throw new Error(`no variant "${name}"`)
+	previewVariant(variant)
+}
+
 // Draws only the model (no grid, gizmos or background) into a transparent image of the given size.
 function render(view: View, width: number, height: number): string {
 	applyPose(view.pose)
+	applyVariant(view.variant)
 	const renderer = Preview.selected!.renderer
 	const camera = new THREE.PerspectiveCamera(FOV, width / height, 0.5, 30000)
 	const { position, target } = blockbenchCamera(view)

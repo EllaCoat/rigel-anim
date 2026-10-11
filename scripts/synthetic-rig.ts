@@ -1,8 +1,9 @@
 // A small rig whose animations cover what baking has to handle: catmullrom, bezier, step and linear
 // keyframes; shear (children turning under unevenly scaled parents, with and without two equal scale
 // axes); zero scale; mirroring; a bone without cubes; a 'once' animation whose length is not a
-// whole number of ticks; and eased segments, overshooting ones included. Each face direction has its
-// own colour, so a mirrored or turned export shows in screenshots.
+// whole number of ticks; eased segments, overshooting ones included; a variant; locators with and
+// without an entity; and the three displays. Each face direction has its own colour, so a mirrored
+// or turned export shows in screenshots.
 import { deflateSync } from 'node:zlib'
 
 let next = 0
@@ -32,34 +33,59 @@ function chunk(type: string, data: Uint8Array): Buffer {
 	out.writeUInt32BE(crc32(body), body.length + 4)
 	return out
 }
-function paletteDataUrl(): string {
-	const size = 16
-	const raw = Buffer.alloc(size * (size * 4 + 1))
-	for (let y = 0; y < size; y++) {
-		for (let x = 0; x < size; x++) {
-			const [r, g, b] = STRIPES[Math.floor(x / 2)] ?? [255, 0, 255]
-			raw.set([r, g, b, 255], y * (size * 4 + 1) + 1 + x * 4)
-		}
-	}
+function png(width: number, height: number, pixel: (x: number, y: number) => number[]): Buffer {
+	const raw = Buffer.alloc(height * (width * 4 + 1))
+	for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) raw.set(pixel(x, y), y * (width * 4 + 1) + 1 + x * 4)
 	const header = Buffer.alloc(13)
-	header.writeUInt32BE(size, 0)
-	header.writeUInt32BE(size, 4)
+	header.writeUInt32BE(width, 0)
+	header.writeUInt32BE(height, 4)
 	header.set([8, 6, 0, 0, 0], 8)
-	const png = Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', header), chunk('IDAT', deflateSync(raw)), chunk('IEND', new Uint8Array())])
-	return `data:image/png;base64,${png.toString('base64')}`
+	return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', header), chunk('IDAT', deflateSync(raw)), chunk('IEND', new Uint8Array())])
+}
+function paletteDataUrl(invert = false): string {
+	const image = png(16, 16, (x) => [...(STRIPES[Math.floor(x / 2)] ?? [255, 0, 255]).map((c) => (invert ? 255 - c : c)), 255])
+	return `data:image/png;base64,${image.toString('base64')}`
+}
+
+const CLEAR = [0, 0, 0, 0]
+// U+E000: a red bar on the left, a blue base and a yellow dot at the top right, 16 pixels wide.
+const wideGlyph = (x: number, y: number) => (x < 4 ? [220, 40, 40, 255] : y >= 12 ? [40, 80, 220, 255] : x >= 12 && x < 15 && y >= 1 && y < 4 ? [230, 200, 40, 255] : CLEAR)
+// U+E001: a green triangle, 10 pixels wide at its base, in a 16 pixel cell.
+const narrowGlyph = (x: number, y: number) => (x < ((y + 1) * 10) / 16 ? [40, 180, 60, 255] : CLEAR)
+
+/**
+ * The resource pack with `check:icons`, the font the note display uses: two bitmap glyphs taller than the default
+ * font's, one narrower than its cell, and a space that steps back between them.
+ */
+export function syntheticFontPack(): Record<string, string | Buffer> {
+	const providers = [
+		{ type: 'bitmap', file: 'check:font/icons.png', ascent: 12, height: 16, chars: [''] },
+		{ type: 'space', advances: { '': -4 } },
+	]
+	return {
+		'pack.mcmeta': JSON.stringify({ pack: { pack_format: 22, description: 'synthetic font' } }),
+		'assets/check/font/icons.json': JSON.stringify({ providers }),
+		'assets/check/textures/font/icons.png': png(32, 16, (x, y) => (x < 16 ? wideGlyph(x, y) : narrowGlyph(x - 16, y))),
+	}
 }
 const faces = () => Object.fromEntries(DIRECTIONS.map((d, i) => [d, { uv: [i * 2 + 0.5, 4, i * 2 + 1.5, 12], texture: 0 }]))
 
 const elements: object[] = []
-function group(name: string, origin: V, cube?: [V, V], children: object[] = []) {
+function group(name: string, origin: V, cube?: [V, V], children: (object | string)[] = [], extra: object = {}) {
 	const kids: (object | string)[] = []
 	if (cube) {
 		const uuid = id()
 		elements.push({ name, type: 'cube', uuid, from: cube[0], to: cube[1], origin, rotation: [0, 0, 0], faces: faces() })
 		kids.push(uuid)
 	}
-	return { name, uuid: id(), origin, rotation: [0, 0, 0], children: [...kids, ...children] }
+	return { name, uuid: id(), origin, rotation: [0, 0, 0], children: [...kids, ...children], ...extra }
 }
+function locator(name: string, position: V, entity = '', nbt = '') {
+	const uuid = id()
+	elements.push({ name, type: 'locator', uuid, position, rotation: [0, 0, 0], rigel_entity: entity, rigel_entity_nbt: nbt })
+	return uuid
+}
+const display = (name: string, origin: V, settings: object) => group(name, origin, undefined, [], { rigel_display: { scale: [1, 1, 1], nbt: '', ...settings } })
 
 function key(channel: string, time: number, [x, y, z]: V, interpolation = 'linear', extra: object = {}) {
 	return { channel, data_points: [{ x, y, z }], uuid: id(), time, color: -1, interpolation, ...extra }
@@ -80,13 +106,40 @@ function bezier(time: number, value: V, left: V, right: V) {
 export function syntheticRig() {
 	next = 0
 	elements.length = 0
-	const hand = group('hand', [4, 6, 0], [[3, 4, -1], [5, 6, 1]])
-	const arm = group('arm', [4, 12, 0], [[3, 6, -1], [5, 12, 1]], [hand])
+	const sword = display('sword', [4, 4, 0], { kind: 'item', item: 'minecraft:iron_sword', tag: '', mode: 'none', scale: [0.5, 0.5, 0.5] })
+	const hand = group('hand', [4, 6, 0], [[3, 4, -1], [5, 6, 1]], [locator('tip', [4, 3, 0]), sword])
+	const arm = group('arm', [4, 12, 0], [[3, 6, -1], [5, 12, 1]], [hand, locator('mark', [5, 9, 1], 'minecraft:marker', '{data:{check:1b}}')])
 	const tailtip = group('tailtip', [0, 6, -8], [[-1, 5, -10], [1, 7, -8]])
 	const tail = group('tail', [0, 6, -4], [[-1, 5, -8], [1, 7, -4]], [tailtip])
 	const gem = group('gem', [0, 16, 0], [[-1, 16, -1], [1, 18, 1]])
 	const pivot = group('pivot', [0, 14, 0], undefined, [gem])
-	const body = group('body', [0, 8, 0], [[-3, 4, -2], [3, 12, 2]], [arm, tail, pivot])
+	const label = display('label', [0, 20, 0], {
+		kind: 'text',
+		text: '[{"text":"Rigel ","color":"gold","bold":true},{"text":"文字の表示"}]',
+		lineWidth: 200,
+		background: 0x40000000,
+		defaultBackground: false,
+		textOpacity: 255,
+		shadow: true,
+		seeThrough: false,
+		alignment: 'center',
+	})
+	// Wrapped Japanese, decorations and the font of syntheticFontPack.
+	const note = display('note', [-14, 2, 3], {
+		kind: 'text',
+		text: '[{"text":"折り返す長めの日本語","italic":true},{"text":" under","underlined":true},{"text":" strike ","strikethrough":true,"color":"aqua"},{"text":"\\uE000\\uF801\\uE001","font":"check:icons"}]',
+		lineWidth: 64,
+		background: 0x60204080,
+		defaultBackground: false,
+		textOpacity: 255,
+		shadow: false,
+		seeThrough: false,
+		alignment: 'left',
+		scale: [0.5, 0.5, 0.5],
+	})
+	// Behind the body, so that it hides nothing from the front.
+	const ice = display('ice', [-8, 0, -28], { kind: 'block', block: 'minecraft:oak_stairs[facing=east,half=top]' })
+	const body = group('body', [0, 8, 0], [[-3, 4, -2], [3, 12, 2]], [arm, tail, pivot, label, note, ice])
 
 	const animation = (name: string, loop: string, length: number, animators: Record<string, object[]>, bones: Record<string, { uuid: string }>) => ({
 		uuid: id(),
@@ -102,7 +155,9 @@ export function syntheticRig() {
 		loop_delay: '',
 		animators: Object.fromEntries(Object.entries(animators).map(([bone, keyframes]) => [bones[bone]!.uuid, { name: bone, type: 'bone', keyframes }])),
 	})
-	const bones = { body, arm, hand, tail, tailtip, pivot, gem }
+	const bones = { body, arm, hand, tail, tailtip, pivot, gem, ice }
+	const palette = { name: 'palette.png', id: '0', uuid: id(), width: 16, height: 16, uv_width: 16, uv_height: 16, source: paletteDataUrl() }
+	const paletteAlt = { name: 'palette_alt.png', id: '1', uuid: id(), width: 16, height: 16, uv_width: 16, uv_height: 16, source: paletteDataUrl(true) }
 
 	return {
 		meta: { format_version: '5.0', model_format: 'rigel', box_uv: false },
@@ -110,7 +165,9 @@ export function syntheticRig() {
 		resolution: { width: 16, height: 16 },
 		elements,
 		outliner: [body],
-		textures: [{ name: 'palette.png', id: '0', uuid: id(), width: 16, height: 16, uv_width: 16, uv_height: 16, source: paletteDataUrl() }],
+		textures: [palette, paletteAlt],
+		// The tail keeps its look: an excluded bone.
+		rigel_variants: [{ name: 'alt', textures: [[palette.uuid, paletteAlt.uuid]], excluded: [tail.uuid], onApply: 'check:applied' }],
 		animations: [
 			animation('curves', 'loop', 1.5, {
 				body: [key('rotation', 0, [0, 0, 0], 'catmullrom'), key('rotation', 0.5, [10, 60, 0], 'catmullrom'), key('rotation', 1, [0, 120, 20], 'catmullrom'), key('rotation', 1.5, [0, 0, 0], 'catmullrom')],
@@ -123,6 +180,7 @@ export function syntheticRig() {
 				arm: [key('rotation', 0, [0, 0, 0]), key('rotation', 1, [90, 45, 0])],
 				tail: [key('scale', 0, [2, 1.5, 1]), key('scale', 1, [2, 1.5, 1])],
 				tailtip: [key('rotation', 0, [0, 0, 0]), key('rotation', 1, [30, 60, 90])],
+				ice: [key('scale', 0, [1, 1, 1]), key('scale', 0.5, [0.25, 0.25, 0.25]), key('scale', 1, [1, 1, 1])],
 			}, bones),
 			animation('hide', 'hold', 1, {
 				tail: [key('scale', 0, [1, 1, 1]), key('scale', 0.5, [0, 0, 0]), key('scale', 1, [1, 1, 1])],

@@ -26,10 +26,57 @@ export interface CubeSource {
 	faces: Partial<Record<Direction, FaceSource>>
 }
 
+export const ITEM_DISPLAY_MODES = ['none', 'thirdperson_lefthand', 'thirdperson_righthand', 'firstperson_lefthand', 'firstperson_righthand', 'head', 'gui', 'ground', 'fixed'] as const
+export type ItemDisplayMode = (typeof ITEM_DISPLAY_MODES)[number]
+export const TEXT_ALIGNMENTS = ['center', 'left', 'right'] as const
+export type TextAlignment = (typeof TEXT_ALIGNMENTS)[number]
+
+interface DisplayCommon {
+	// Applied on top of the bone's own transform; groups have no scale of their own.
+	scale: Vec3
+	// SNBT compound merged into the summon, for keys the settings do not cover.
+	nbt: string
+}
+
+export type DisplaySettings =
+	| (DisplayCommon & { kind: 'block'; block: string })
+	| (DisplayCommon & { kind: 'item'; item: string; tag: string; mode: ItemDisplayMode })
+	| (DisplayCommon & {
+			kind: 'text'
+			// A JSON text component, or plain text when it does not parse as JSON.
+			text: string
+			lineWidth: number
+			// ARGB.
+			background: number
+			defaultBackground: boolean
+			// 0–255.
+			textOpacity: number
+			shadow: boolean
+			seeThrough: boolean
+			alignment: TextAlignment
+	  })
+
 export interface BoneSource {
 	name: string
 	pivot: Vec3
 	cubes: CubeSource[]
+	display?: DisplaySettings
+}
+
+export interface VariantSource {
+	name: string
+	// [texture, replacement] pairs, as indices into RigSource.textures.
+	textures: [number, number][]
+	// Bones (indices into RigSource.bones) the variant leaves as they are.
+	excluded: number[]
+	// A function ID, or '' for none.
+	onApply: string
+}
+
+export interface LocatorSource {
+	name: string
+	// An entity kept at the locator, or none.
+	entity?: { type: string; nbt: string }
 }
 
 export interface TextureSource {
@@ -56,6 +103,8 @@ export interface AnimationSource {
 	thin: AnimationThin
 	// (ticks + 1) frames × bones × 16, as readBoneMatrices writes them.
 	matrices: Float64Array
+	// (ticks + 1) frames × locators × 3: positions in blocks, in the rig's frame.
+	locators: Float64Array
 }
 
 export interface RigSource {
@@ -63,6 +112,10 @@ export interface RigSource {
 	textures: TextureSource[]
 	// bones × 16: the pose without animations.
 	rest: Float64Array
+	locators: LocatorSource[]
+	// locators × 3.
+	locatorRest: Float64Array
+	variants: VariantSource[]
 	animations: AnimationSource[]
 }
 

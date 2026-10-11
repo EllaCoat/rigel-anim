@@ -11,7 +11,7 @@ import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, writ
 import { basename, dirname, join, resolve } from 'node:path'
 import { SERVER_DIR, Server } from '../bench/mc'
 import { TARGET } from '../bench/target'
-import { blockbenchRunning, devBlockbench, evaluate } from './devtools'
+import { blockbenchRunning, devBlockbench, evaluate, useFonts } from './devtools'
 import { Client, GAME_DIR, KEY_F1, PLAYER, setupClient } from './mc-client'
 import { parseSpec, poseCommands, type Spec, teleportArgs } from './shot-spec'
 
@@ -114,15 +114,18 @@ async function drawInBlockbench(spec: Spec & { model: string }, specDir: string,
 		const build = await Bun.build({ entrypoints: [join(import.meta.dir, 'shot-harness.ts')], target: 'browser', format: 'iife' })
 		if (!build.success) throw new AggregateError(build.logs, 'harness build failed')
 		await evaluate(`${await build.outputs[0]!.text()}\nreturn true`)
+		await useFonts(spec.resourcePacks.map((pack) => resolve(specDir, pack)))
 		const modelPath = resolve(specDir, spec.model)
 		const model = JSON.parse(readFileSync(modelPath, 'utf8'))
 		await evaluate(`return await __rigelShot.open(${JSON.stringify(model)}, ${JSON.stringify(basename(modelPath))})`)
 
 		const files: string[] = []
+		let variant: string | undefined
 		for (const [i, view] of spec.views.entries()) {
 			const minecraft = readFileSync(shots[i]!)
 			const { width, height } = pngSize(minecraft)
-			const blockbench: string = await evaluate(`return __rigelShot.render(${JSON.stringify(view)}, ${width}, ${height})`)
+			if (view.variant !== undefined) variant = view.variant === 'default' ? undefined : view.variant
+			const blockbench: string = await evaluate(`return __rigelShot.render(${JSON.stringify({ ...view, variant })}, ${width}, ${height})`)
 			writeDataUrl(join(out, `${view.name}-bb.png`), blockbench)
 			const compare: string = await evaluate(`return await __rigelShot.compose(${JSON.stringify(dataUrl(minecraft))}, ${JSON.stringify(blockbench)})`)
 			const file = join(out, `${view.name}-compare.png`)

@@ -9,15 +9,13 @@
 //   bun scripts/dev-bb.ts stop               close it without saving
 import { spawn, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { copyFileSync, existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import { evaluate, PORT } from './devtools'
+import { BB_VERSION as VERSION, DEV_ROOT, evaluate, FONT_PACKS, MINECRAFT_DIR, PORT } from './devtools'
 
-const VERSION = '5.2.1'
 const ASSET = `Blockbench_${VERSION}_portable.exe`
 const SEVEN_ZIP = process.env.SEVEN_ZIP ?? 'C:\\Program Files\\7-Zip\\7z.exe'
 const RELEASE_API = `https://api.github.com/repos/JannisX11/blockbench/releases/tags/v${VERSION}`
-const DEV_ROOT = process.env.BB_DEV_ROOT ?? join(process.env.LOCALAPPDATA ?? '', 'rigel-anim', `blockbench-${VERSION}`)
 const APP = join(DEV_ROOT, 'app')
 const USER_DATA = join(DEV_ROOT, 'userdata')
 const PLUGINS = join(USER_DATA, 'plugins')
@@ -76,8 +74,24 @@ async function waitReady(timeoutMs = 90_000): Promise<void> {
 	throw new Error('development Blockbench did not become ready')
 }
 
+// Answers the plugin's permission dialog for the font folders ahead, the way "Always allow" saves it. Blockbench
+// reads the answers when it starts.
+function grantFontFolders(): void {
+	const file = join(USER_DATA, 'plugin_permissions.json')
+	const data = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : {}
+	const allowed = ((data[PLUGIN_ID] ??= {}).allowed ??= {})
+	if (allowed.fs === true) return
+	const directories: string[] = ((allowed.fs ??= {}).directories ??= [])
+	const missing = [MINECRAFT_DIR, FONT_PACKS].filter((dir) => !directories.includes(dir))
+	if (missing.length === 0) return
+	directories.push(...missing)
+	mkdirSync(USER_DATA, { recursive: true })
+	writeFileSync(file, JSON.stringify(data))
+}
+
 async function launch(files: string[]): Promise<void> {
 	if (!existsSync(join(APP, 'Blockbench.exe'))) throw new Error('run `bun scripts/dev-bb.ts setup` first')
+	grantFontFolders()
 	const args = ['--userData', USER_DATA, `--remote-debugging-port=${PORT}`, '--remote-debugging-address=127.0.0.1', ...files.map((f) => resolve(f))]
 	const child = spawn(join(APP, 'Blockbench.exe'), args, { detached: true, stdio: 'ignore' })
 	child.unref()
@@ -99,6 +113,10 @@ async function install(): Promise<void> {
 		window.addEventListener('error', onError)
 		window.addEventListener('unhandledrejection', onError)
 		try {
+			// The settings come back with the values Blockbench read when it started. The font folders are set to the
+			// granted ones, so that a project left open does not ask for a folder while the plugin loads.
+			Settings.stored.rigel_font_minecraft_dir = { value: ${JSON.stringify(MINECRAFT_DIR)} }
+			Settings.stored.rigel_font_resource_packs = { value: '' }
 			// Plugin.reload() does not wait for the new load and then reads about.md next to the file,
 			// which logs an error for every file plugin. Uninstalling (keeps the file) and loading again
 			// keeps the whole load inside this error capture.

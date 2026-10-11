@@ -22,7 +22,7 @@ export function variantAt(keys: readonly TimedVariant[], time: number): string |
 // keyframe up to `time` applies to a bone, the last one in the animation does, as in variantAt. A bone no keyframe
 // applies to wears `fallback`, the variant chosen in the panel, unless that one excludes it.
 // excluded: the bones each variant leaves alone, by variant uuid; every keyframe names `default` or one of them.
-export function variantsByBone(
+export function variantPerBone(
 	keys: readonly TimedVariant[],
 	time: number,
 	bones: readonly string[],
@@ -65,5 +65,5 @@ export function viewPlan({ painting, keys, time, bones, excluded, chosen }: View
 	if (painting) return { byBone: new Map(bones.map((b) => [b, DEFAULT_VARIANT_ID])), other: DEFAULT_VARIANT_ID, headline: DEFAULT_VARIANT_ID }
 	const timeline = keys.map((k) => ({ time: k.time, variant: known(k.variant) }))
 	const headline = variantAt(timeline, time) ?? known(chosen)
-	return { byBone: variantsByBone(timeline, time, bones, excluded, known(chosen)), other: headline, headline }
+	return { byBone: variantPerBone(timeline, time, bones, excluded, known(chosen)), other: headline, headline }
 }

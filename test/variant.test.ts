@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { variantCalls, variantCuts } from '../src/export/variant-keys'
 import { notShowing } from '../src/variant/keyframes'
-import { variantAt, variantsByBone, viewPlan } from '../src/variant/keys'
+import { variantAt, variantPerBone, viewPlan } from '../src/variant/keys'
 import { DEFAULT_VARIANT_ID, freeName, newVariant, readVariants, writeVariants, type StoredVariant } from '../src/variant/settings'
 
 const project = (rigel_variants: unknown) => ({ rigel_variants, saved: true }) as unknown as ModelProject
@@ -125,7 +125,7 @@ describe('variants by bone', () => {
 	// bodyV leaves the face alone, faceV leaves the body alone.
 	const excluded = new Map([['bodyV', new Set(['face'])], ['faceV', new Set(['body'])]])
 	const key = (time: number, variant: string) => ({ time, variant })
-	const wear = (keys: ReturnType<typeof key>[], time: number, chosen = 'default') => Object.fromEntries(variantsByBone(keys, time, bones, excluded, chosen))
+	const wear = (keys: ReturnType<typeof key>[], time: number, chosen = 'default') => Object.fromEntries(variantPerBone(keys, time, bones, excluded, chosen))
 
 	test('a variant that leaves a bone out does not undo what an earlier keyframe gave that bone', () => {
 		const keys = [key(0, 'bodyV'), key(1, 'faceV')]

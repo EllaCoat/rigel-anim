@@ -85,7 +85,7 @@ function openDisplayDialog(target: { edit: Group } | { parent: Group | undefined
 				Blockbench.showMessageBox({ title: 'display', message: problems.join('\n\n') })
 				return false
 			}
-			Undo.initEdit({ outliner: true })
+			Undo.initEdit({ outliner: true, groups: editing ? [editing] : [] })
 			let group = editing
 			if (!group) {
 				const parent = 'parent' in target ? target.parent : undefined
@@ -94,7 +94,7 @@ function openDisplayDialog(target: { edit: Group } | { parent: Group | undefined
 			}
 			group.name = name
 			writeDisplay(group, display)
-			Undo.finishEdit(editing ? 'display の設定' : 'display を追加', { outliner: true })
+			Undo.finishEdit(editing ? 'display の設定' : 'display を追加', { outliner: true, groups: [group] })
 			refreshDisplayPreview(group)
 			Canvas.updateAll()
 		},

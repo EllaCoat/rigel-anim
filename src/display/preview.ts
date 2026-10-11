@@ -12,6 +12,7 @@ const TEXT_PIXEL = 0.025 * 16
 
 type Setup = (group: Group) => unknown
 let originalSetup: Setup | undefined
+let listeners: Deletable[] = []
 // Text previews resolve later; a newer refresh of the same group wins.
 const pending = new WeakMap<Group, number>()
 let serial = 0
@@ -182,10 +183,13 @@ export function registerDisplayPreview(): void {
 		refreshDisplayPreview(group)
 		return result
 	}
+	listeners = [Blockbench.on('undo', refreshAllDisplayPreviews), Blockbench.on('redo', refreshAllDisplayPreviews)]
 	refreshAllDisplayPreviews()
 }
 
 export function unregisterDisplayPreview(): void {
+	for (const listener of listeners) listener.delete()
+	listeners = []
 	if (originalSetup) (Group.preview_controller as unknown as { setup: Setup }).setup = originalSetup
 	originalSetup = undefined
 	if (Project) for (const group of Group.all) for (const old of (group.mesh as THREE.Object3D).children.filter((c) => c.name === PREVIEW)) group.mesh.remove(old)

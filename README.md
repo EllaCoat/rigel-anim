@@ -64,7 +64,7 @@ Blockbench で作ったモデルとアニメーションを、Minecraft Java Edi
 書き出すと、keyframe の時刻を tick（1 秒 20 tick、四捨五入）にして、その tick のフレームの関数が `rigel:<リグ名>/variant/<variant 名>` を呼ぶ。温めのあいだは呼ばない。
 
 - 同じ tick に keyframe が複数あるときは、時刻が後の 1 つだけを呼ぶ。
-- ループのアニメーションの最後の tick は、frame 0 の姿勢を見せる tick になる。その tick にある keyframe は tick 0 の keyframe として扱い、tick 0 の variant は最後の tick でも適用する。
+- ループのアニメーションの最後の tick は、frame 0 の姿勢を見せる tick になる。その tick にある keyframe は tick 0 の keyframe として扱い、tick 0 の variant は最後の tick でも適用する。tick 0 にも keyframe があるときは、tick 0 のほうを使い、最後の tick の keyframe は使わない。
 - 最初の keyframe より前は何も呼ばないので、再生を始めたときの variant は、それまでに適用していたものになる。再生のたびに同じ variant から始めたいときは、tick 0 に keyframe を置く。
 - variant が 1 つもなくても、`default` の keyframe は置ける。このときも `variant/default` を書き出す。
 

@@ -135,10 +135,10 @@ describe('variant keyframes', () => {
 		const last = build({ variantKeys: [{ time: 0.2, variant: 'blink' }] })
 		expect(frame(last, 0).at(-1)).toBe(call('blink'))
 		expect(frame(last, 4)).toEqual([warm, call('blink'), 'scoreboard players set $Rigel.axia Rigel.Frame 0'])
-		const both = build({ variantKeys: [{ time: 0, variant: 'blink' }, { time: 0.2, variant: 'default' }, { time: 0.1, variant: 'blink' }] })
-		expect(frame(both, 0).at(-1)).toBe(call('default'))
-		expect(frame(both, 2)).toEqual([warm, call('blink')])
-		expect(frame(both, 4)).toEqual([warm, call('default'), 'scoreboard players set $Rigel.axia Rigel.Frame 0'])
+		const both = build({ variantKeys: [{ time: 0, variant: 'blink' }, { time: 0.2, variant: 'default' }, { time: 0.1, variant: 'default' }] })
+		expect(frame(both, 0).at(-1)).toBe(call('blink'))
+		expect(frame(both, 2)).toEqual([warm, call('default')])
+		expect(frame(both, 4)).toEqual([warm, call('blink'), 'scoreboard players set $Rigel.axia Rigel.Frame 0'])
 	})
 
 	test('a once animation applies its keyframes and the rest frame leaves them', () => {

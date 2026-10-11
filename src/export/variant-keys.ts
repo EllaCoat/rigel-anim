@@ -3,14 +3,18 @@ import type { Loop } from './types'
 
 // The variant each frame function applies: frame → variant name. A keyframe lands on the tick nearest its time, and the
 // later of two on one tick wins. A loop shows frame 0's pose on its last tick without running frame 0 again, so a
-// keyframe on the last tick counts as one on tick 0, and tick 0's variant is applied again on the last tick.
+// keyframe on the last tick counts as one on tick 0 unless tick 0 has its own, and tick 0's variant is applied again
+// on the last tick.
 export function variantCalls(loop: Loop, ticks: number, keys: readonly { time: number; variant: string }[]): Map<number, string> {
 	const calls = new Map<number, string>()
 	const looping = loop === 'loop' && ticks > 0
+	let last: string | undefined
 	for (const key of [...keys].sort((a, b) => a.time - b.time)) {
 		const tick = Math.min(Math.round(key.time * TICKS_PER_SECOND + 1e-9), ticks)
-		calls.set(looping && tick === ticks ? 0 : tick, key.variant)
+		if (looping && tick === ticks) last = key.variant
+		else calls.set(tick, key.variant)
 	}
+	if (looping && last !== undefined && !calls.has(0)) calls.set(0, last)
 	const first = calls.get(0)
 	if (looping && first !== undefined) calls.set(ticks, first)
 	return calls

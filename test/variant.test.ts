@@ -67,10 +67,12 @@ describe('variant calls', () => {
 		expect([...variantCalls('hold', 20, [key(1.2, 'a')])]).toEqual([[20, 'a']])
 	})
 
-	test("a loop applies tick 0's variant on its last tick, and a keyframe there counts as one on tick 0", () => {
+	test("a loop applies tick 0's variant on its last tick, and a keyframe there counts as one on tick 0 only where tick 0 has none", () => {
 		expect([...variantCalls('loop', 20, [key(0, 'a'), key(0.5, 'b')])]).toEqual([[0, 'a'], [10, 'b'], [20, 'a']])
 		expect([...variantCalls('loop', 20, [key(1, 'z')])]).toEqual([[0, 'z'], [20, 'z']])
-		expect([...variantCalls('loop', 20, [key(0, 'a'), key(1, 'z')])]).toEqual([[0, 'z'], [20, 'z']])
+		expect([...variantCalls('loop', 20, [key(0, 'a'), key(1, 'z')])]).toEqual([[0, 'a'], [20, 'a']])
+		expect([...variantCalls('loop', 20, [key(1, 'z'), key(0.02, 'b'), key(0, 'a')])]).toEqual([[0, 'b'], [20, 'b']])
+		expect([...variantCalls('loop', 20, [key(0.5, 'b'), key(1, 'z')])]).toEqual([[10, 'b'], [0, 'z'], [20, 'z']])
 		expect([...variantCalls('loop', 0, [key(0, 'a')])]).toEqual([[0, 'a']])
 	})
 

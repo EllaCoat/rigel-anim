@@ -169,6 +169,7 @@ export function splitLines(input: TextPart[], maxWidth: number, widthOf: WidthOf
 
 /** FormattedBidiReorder for left-to-right text: the characters of a line, `§` codes applied, each with its style. */
 export function lineChars(line: TextPart[]): StyledChar[] {
+	// ponytail: no bidi reordering or Arabic shaping; right-to-left text keeps its logical order, add ICU-like handling if needed
 	const chars: StyledChar[] = []
 	for (const part of line) {
 		iterateFormatted(part.text, 0, part.style, part.style, (_, style, codepoint) => {

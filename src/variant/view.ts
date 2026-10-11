@@ -1,13 +1,22 @@
 import { isRigelProject } from '../easing/keyframes'
-import { keyframeVariantNow, showVariantTrack } from './keyframes'
+import { variantTimeline, showVariantTrack } from './keyframes'
+import { viewPlan } from './keys'
 import { DEFAULT_VARIANT_ID, readVariants, type StoredVariant } from './settings'
 
 type Material = THREE.Material
 
-// Neither is saved. `chosen` is the variant picked in the panel; `shown` is the one the viewport draws, which
+// What the viewport draws: the variant of each bone (by group uuid), and the variants themselves.
+interface Shown {
+	byBone: Record<string, string>
+	other: string
+	headline: string
+	variants: Record<string, StoredVariant>
+}
+
+// Neither is saved. `chosen` is the variant picked in the panel; `shown` is what the viewport draws, which
 // the next face update of every Cube draws again.
 const chosen = new WeakMap<ModelProject, string>()
-const shown = new WeakMap<ModelProject, StoredVariant | undefined>()
+const shown = new WeakMap<ModelProject, Shown>()
 
 let listeners: Deletable[] = []
 let onChange: () => void = () => {}
@@ -18,7 +27,7 @@ export function chosenId(): string {
 }
 
 export function shownId(): string {
-	return (Project && shown.get(Project)?.uuid) || DEFAULT_VARIANT_ID
+	return (Project && shown.get(Project)?.headline) || DEFAULT_VARIANT_ID
 }
 
 export function choose(id: string): void {
@@ -26,11 +35,14 @@ export function choose(id: string): void {
 	refreshView()
 }
 
-// Swaps the materials of the Cubes the variant applies to. Blockbench draws a Cube's own textures whenever it updates
-// the faces, so this runs after each of those.
+// Swaps the materials of each Cube to those of the variant its bone wears. Blockbench draws a Cube's own textures
+// whenever it updates the faces, so this runs after each of those.
 function swapMaterials({ element }: { element: Cube }): void {
-	const variant = Project && shown.get(Project)
-	if (!variant || (element.parent instanceof Group && variant.excluded.includes(element.parent.uuid))) return
+	const now = Project && shown.get(Project)
+	if (!now) return
+	const id = element.parent instanceof Group ? (now.byBone[element.parent.uuid] ?? now.other) : now.other
+	const variant = now.variants[id]
+	if (!variant) return
 	const replace = new Map<Material, Material>()
 	for (const [from, to] of variant.textures) {
 		const a = Texture.all.find((t) => t.uuid === from)
@@ -43,17 +55,26 @@ function swapMaterials({ element }: { element: Cube }): void {
 	mesh.material = Array.isArray(mesh.material) ? mesh.material.map(swap) : swap(mesh.material)
 }
 
-// In the animation view, an animation with variant keyframes shows the one at its playhead; everything else shows
-// the variant chosen in the panel.
-function wantedId(): string {
+// In the animation view, each bone wears what the variant keyframes at the playhead give it (see variantsByBone);
+// everything else shows the variant chosen in the panel.
+function plan(project: ModelProject): Shown {
+	const variants = readVariants(project)
 	const animation = Modes.animate && BBAnimation.selected
-	return (animation && keyframeVariantNow(animation)) || chosenId()
+	const { byBone, other, headline } = viewPlan({
+		painting: Modes.paint,
+		keys: animation ? variantTimeline(animation) : [],
+		time: animation ? animation.time : 0,
+		bones: Group.all.filter((g) => g.children.some((c) => c instanceof Cube)).map((g) => g.uuid),
+		excluded: new Map(variants.map((v) => [v.uuid, new Set(v.excluded)])),
+		chosen: chosenId(),
+	})
+	const used = new Set([...byBone.values(), other])
+	return { byBone: Object.fromEntries(byBone), other, headline, variants: Object.fromEntries(variants.filter((v) => used.has(v.uuid)).map((v) => [v.uuid, v])) }
 }
 
 function draw(): boolean {
 	if (!Project || !isRigelProject()) return false
-	const id = wantedId()
-	const next = readVariants(Project).find((v) => v.uuid === id)
+	const next = plan(Project)
 	if (JSON.stringify(shown.get(Project)) === JSON.stringify(next)) return false
 	shown.set(Project, next)
 	Canvas.updateView({ elements: Cube.all, element_aspects: { faces: true } })

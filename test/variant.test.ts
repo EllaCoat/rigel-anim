@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { variantCalls, variantCuts } from '../src/export/variant-keys'
 import { notShowing } from '../src/variant/keyframes'
-import { variantAt } from '../src/variant/keys'
+import { variantAt, variantsByBone, viewPlan } from '../src/variant/keys'
 import { DEFAULT_VARIANT_ID, freeName, newVariant, readVariants, writeVariants, type StoredVariant } from '../src/variant/settings'
 
 const project = (rigel_variants: unknown) => ({ rigel_variants, saved: true }) as unknown as ModelProject
@@ -117,5 +117,82 @@ describe('keyframes that change', () => {
 		expect(notShowing([a!, b!], 'x')).toEqual([b!])
 		expect(notShowing([a!], 'x')).toEqual([])
 		expect(notShowing([none!], 'default')).toEqual([])
+	})
+})
+
+describe('variants by bone', () => {
+	const bones = ['body', 'face']
+	// bodyV leaves the face alone, faceV leaves the body alone.
+	const excluded = new Map([['bodyV', new Set(['face'])], ['faceV', new Set(['body'])]])
+	const key = (time: number, variant: string) => ({ time, variant })
+	const wear = (keys: ReturnType<typeof key>[], time: number, chosen = 'default') => Object.fromEntries(variantsByBone(keys, time, bones, excluded, chosen))
+
+	test('a variant that leaves a bone out does not undo what an earlier keyframe gave that bone', () => {
+		const keys = [key(0, 'bodyV'), key(1, 'faceV')]
+		expect(wear(keys, 0.5)).toEqual({ body: 'bodyV', face: 'faceV' })
+		expect(wear(keys, 1.5)).toEqual({ body: 'bodyV', face: 'faceV' })
+		expect(wear([key(0, 'faceV'), key(1, 'bodyV')], 1.5)).toEqual({ body: 'bodyV', face: 'faceV' })
+	})
+
+	test('a later keyframe replaces the ones before it only on the bones it applies to', () => {
+		expect(wear([key(0, 'bodyV'), key(1, 'faceV'), key(2, 'bodyV')], 2.5)).toEqual({ body: 'bodyV', face: 'faceV' })
+		expect(wear([key(0, 'bodyV'), key(1, 'faceV'), key(2, 'default')], 1.5)).toEqual({ body: 'bodyV', face: 'faceV' })
+	})
+
+	test('default applies to every bone', () => {
+		expect(wear([key(0, 'bodyV'), key(1, 'default')], 1.5)).toEqual({ body: 'default', face: 'default' })
+		expect(wear([key(0, 'default'), key(1, 'faceV')], 1.5)).toEqual({ body: 'default', face: 'faceV' })
+	})
+
+	test('before the first keyframe a bone wears the last keyframe that applies to it, as a loop carries it over', () => {
+		const keys = [key(0.5, 'faceV'), key(1, 'bodyV')]
+		expect(wear(keys, 0.2)).toEqual({ body: 'bodyV', face: 'faceV' })
+		expect(wear(keys, 0.5)).toEqual({ body: 'bodyV', face: 'faceV' })
+		expect(wear([key(0.5, 'bodyV'), key(1, 'default')], 0.2)).toEqual({ body: 'default', face: 'default' })
+	})
+
+	test('a playhead a hair before a keyframe counts as on it', () => {
+		expect(wear([key(0, 'bodyV'), key(1, 'default')], 1 - 1e-6)).toEqual({ body: 'default', face: 'default' })
+		expect(wear([key(0, 'bodyV'), key(1, 'default')], 1 - 1e-3)).toEqual({ body: 'bodyV', face: 'default' })
+	})
+
+	test('keyframes at one time give the later in the list', () => {
+		expect(wear([key(1, 'bodyV'), key(1, 'default')], 1)).toEqual({ body: 'default', face: 'default' })
+	})
+
+	test('without keyframes, a bone wears the chosen variant unless that one leaves it out', () => {
+		expect(wear([], 3, 'bodyV')).toEqual({ body: 'bodyV', face: 'default' })
+		expect(wear([], 3, 'faceV')).toEqual({ body: 'default', face: 'faceV' })
+		expect(wear([], 3)).toEqual({ body: 'default', face: 'default' })
+	})
+
+	test('a bone no keyframe applies to wears the chosen variant, and the others follow their keyframes', () => {
+		expect(wear([key(0, 'faceV')], 1, 'bodyV')).toEqual({ body: 'bodyV', face: 'faceV' })
+		expect(wear([key(0, 'faceV')], 1, 'faceV')).toEqual({ body: 'default', face: 'faceV' })
+	})
+})
+
+describe('view plan', () => {
+	const bones = ['body', 'face']
+	const excluded = new Map([['bodyV', new Set(['face'])], ['faceV', new Set(['body'])]])
+	const plan = (input: Partial<Parameters<typeof viewPlan>[0]>) => {
+		const { byBone, other, headline } = viewPlan({ painting: false, keys: [], time: 0, bones, excluded, chosen: 'default', ...input })
+		return { byBone: Object.fromEntries(byBone), other, headline }
+	}
+
+	test('the paint view draws the original model whatever is chosen or keyed', () => {
+		const original = { byBone: { body: 'default', face: 'default' }, other: 'default', headline: 'default' }
+		expect(plan({ painting: true, chosen: 'bodyV', keys: [{ time: 0, variant: 'faceV' }] })).toEqual(original)
+		expect(plan({ painting: false, chosen: 'bodyV' })).not.toEqual(original)
+	})
+
+	test('the headline is the keyframe at the playhead, or the chosen variant without keyframes', () => {
+		expect(plan({ keys: [{ time: 0, variant: 'bodyV' }, { time: 1, variant: 'faceV' }], time: 1.5, chosen: 'bodyV' }).headline).toBe('faceV')
+		expect(plan({ chosen: 'faceV' })).toEqual({ byBone: { body: 'default', face: 'faceV' }, other: 'faceV', headline: 'faceV' })
+	})
+
+	test('a keyframe or a choice naming a variant that is gone draws the original model', () => {
+		expect(plan({ keys: [{ time: 0, variant: 'gone' }], time: 1 })).toEqual({ byBone: { body: 'default', face: 'default' }, other: 'default', headline: 'default' })
+		expect(plan({ chosen: 'gone' }).byBone).toEqual({ body: 'default', face: 'default' })
 	})
 })

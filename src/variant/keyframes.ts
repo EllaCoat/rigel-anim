@@ -1,5 +1,5 @@
 import { isRigelProject } from '../easing/keyframes'
-import { variantAt } from './keys'
+import type { TimedVariant } from './keys'
 import { DEFAULT_VARIANT_ID } from './settings'
 import { vue } from './vue'
 
@@ -26,10 +26,10 @@ export function keyframeVariant(keyframe: BBKeyframe): string {
 	return typeof id === 'string' && id ? id : DEFAULT_VARIANT_ID
 }
 
-// The variant the animation's keyframes show at its playhead; undefined when it has none, or they are muted.
-export function keyframeVariantNow(animation: BBAnimation): string | undefined {
-	if (effectsOf(animation)?.muted.variant) return undefined
-	return variantAt(variantKeyframes(animation).map((kf) => ({ time: kf.time, variant: keyframeVariant(kf) })), animation.time)
+// The keyframes the preview follows; none when the track is muted.
+export function variantTimeline(animation: BBAnimation): TimedVariant[] {
+	if (effectsOf(animation)?.muted.variant) return []
+	return variantKeyframes(animation).map((kf) => ({ time: kf.time, variant: keyframeVariant(kf) }))
 }
 
 // The keyframes that do not show the variant yet.

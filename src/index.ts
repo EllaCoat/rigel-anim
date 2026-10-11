@@ -5,6 +5,7 @@ import { registerEasingKeyframes, unregisterEasingKeyframes } from './easing/key
 import { registerEasingUi, unregisterEasingUi } from './easing/ui'
 import { registerExportSettings, unregisterExportSettings } from './export/settings'
 import { registerExportUi, unregisterExportUi } from './export/ui'
+import { registerFontSettings, unregisterFontSettings } from './font'
 import { registerFormat, unregisterFormat } from './format'
 import { registerLocatorSettings, unregisterLocatorSettings } from './locator/settings'
 import { registerLocatorUi, unregisterLocatorUi } from './locator/ui'
@@ -34,10 +35,12 @@ BBPlugin.register(PLUGIN_ID, {
 		registerVariantUi()
 		registerDisplayUi()
 		registerLocatorUi()
+		registerFontSettings()
 		registerDisplayPreview()
 	},
 	onunload() {
 		unregisterDisplayPreview()
+		unregisterFontSettings()
 		unregisterLocatorUi()
 		unregisterDisplayUi()
 		unregisterVariantUi()

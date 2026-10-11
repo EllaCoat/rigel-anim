@@ -48,14 +48,15 @@ export interface RigPackInput {
 	animations: { name: string; loop: Loop; priority: WarmPriority; poses: Poses; frames: FrameWrite[][] }[]
 }
 
-// Writes that interpolate over more than one tick. Then every write of the rig sets the interpolation length, and
-// stop and pause hold each bone at the pose the client shows: changing shadow_strength (not drawn while shadow_radius
-// is 0) makes the client start a new interpolation from that pose (Display.createInterpolatedRenderState), which a
-// long duration keeps from moving. A write over several ticks keeps the frame its run ends at in PortalCooldown,
+// Writes that interpolate over more than one tick. Then f/0 sets every bone's interpolation length to 1, the writes of
+// an animation with such runs set it each time, and stop and pause hold each bone at the pose the client shows:
+// changing shadow_strength (not drawn while shadow_radius is 0) makes the client start a new interpolation from that
+// pose (Display.createInterpolatedRenderState), which a long duration keeps from moving. A write over several ticks keeps the frame its run ends at in PortalCooldown,
 // which display entities neither count down nor send to clients, so restart can finish the run on time.
 // f/0 and rest leave start_interpolation out: restarting the interpolation without changing the pose makes the client
 // replay its last interpolation (Display.tick rebuilds it only when a drawn value changes), from the start of a long run.
-const thinned = (p: RigPackInput) => p.animations.some((a) => a.frames.some((writes) => writes.some((w) => w.duration > 1)))
+const hasRuns = (a: RigPackInput['animations'][number]) => a.frames.some((writes) => writes.some((w) => w.duration > 1))
+const thinned = (p: RigPackInput) => p.animations.some(hasRuns)
 
 export function rigPack(p: RigPackInput): Files {
 	const files: Files = new Map()
@@ -67,8 +68,8 @@ export function rigPack(p: RigPackInput): Files {
 	const warmingCheck = `execute if score ${self} Rigel.Warming matches 1 run return 0`
 	const thin = thinned(p)
 	// f/0 also restores the shadow strength stop and pause change.
-	const head = (f: number, w: FrameWrite) =>
-		!thin ? '' : f === 0 ? 'shadow_strength:1f,PortalCooldown:0,interpolation_duration:1,' : w.duration > 1 ? `PortalCooldown:${f + w.duration - 1},interpolation_duration:${w.duration},` : `interpolation_duration:${w.duration},`
+	const head = (f: number, w: FrameWrite, runs: boolean) =>
+		!thin ? '' : f === 0 ? 'shadow_strength:1f,PortalCooldown:0,interpolation_duration:1,' : !runs ? '' : w.duration > 1 ? `PortalCooldown:${f + w.duration - 1},interpolation_duration:${w.duration},` : `interpolation_duration:${w.duration},`
 	// The rig's storage holds s, the end of an f/0 write without start_interpolation.
 	const headArgs = thin ? `rigel:${p.rig}` : FRAME_ARGS
 	const tail = (f: number) => (thin && f === 0 ? '$(s)' : '$(_)')
@@ -84,9 +85,10 @@ export function rigPack(p: RigPackInput): Files {
 	const rests: Record<WarmPriority, WarmItem[]> = { xhigh: [], high: [], low: [] }
 	p.animations.forEach((animation, a) => {
 		const last = animation.frames.length - 1
+		const runs = hasRuns(animation)
 		animation.frames.forEach((writes, f) => {
 			const lines = [warmingCheck]
-			for (const w of writes) lines.push(`$data merge entity ${bone(w.bone)} {${head(f, w)}transformation:[${animation.poses[w.pose]![w.bone]}${tail(f)}`)
+			for (const w of writes) lines.push(`$data merge entity ${bone(w.bone)} {${head(f, w, runs)}transformation:[${animation.poses[w.pose]![w.bone]}${tail(f)}`)
 			if (f === last) {
 				if (animation.loop === 'loop' && last > 0) lines.push(`scoreboard players set ${self} Rigel.Frame 0`)
 				else if (animation.loop !== 'once') lines.push(`scoreboard players set ${self} Rigel.Playing 0`)

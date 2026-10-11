@@ -33,7 +33,7 @@ export function settingsProblems(s: RigSettings): string[] {
 
 const validTolerance = (t: Tolerance) => Number.isFinite(t.position) && Number.isFinite(t.rotation) && t.position >= 0 && t.rotation >= 0
 
-function toleranceOf(animation: AnimationSource, settings: RigSettings): Tolerance | undefined {
+export function toleranceOf(animation: AnimationSource, settings: RigSettings): Tolerance | undefined {
 	if (animation.thin === 'off') return undefined
 	return animation.thin === 'project' ? settings.thin : animation.thin
 }

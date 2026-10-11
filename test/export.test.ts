@@ -253,12 +253,17 @@ describe('data pack', () => {
 		)
 		const write = (n: number, head: string, values: string, tail = '$(_)') => `$data merge entity 1a2b3c4d-0-0-0-${n} {${head}transformation:[${values}${tail}`
 
+		const first = 'shadow_strength:1f,PortalCooldown:0,interpolation_duration:1,'
+
 		test('every write sets the interpolation length, and the long one the frame its run ends at', () => {
-			const first = 'shadow_strength:1f,PortalCooldown:0,interpolation_duration:1,'
 			expect(lines(thinned, fn('frames/0/0')).slice(1)).toEqual([write(1, first, 'a', '$(s)'), write(2, first, 'b', '$(s)')])
 			expect(lines(thinned, fn('frames/0/1')).slice(1)).toEqual([write(2, 'PortalCooldown:2,interpolation_duration:2,', 'X')])
 			expect(lines(thinned, fn('frames/0/2')).slice(1)).toEqual([write(1, 'interpolation_duration:1,', 'A'), 'scoreboard players set $Rigel.axia Rigel.Playing 0'])
-			expect(lines(thinned, fn('frames/1/1')).slice(1)).toEqual([write(1, 'interpolation_duration:1,', 'C')])
+		})
+
+		test('an animation without such runs sets the interpolation length only at frame 0', () => {
+			expect(lines(thinned, fn('frames/1/0')).slice(1)).toEqual([write(1, first, 'c', '$(s)'), write(2, first, 'd', '$(s)')])
+			expect(lines(thinned, fn('frames/1/1')).slice(1)).toEqual([write(1, '', 'C')])
 		})
 
 		test('a snap sets the interpolation length to 0', () => {

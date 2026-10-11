@@ -1,8 +1,9 @@
 // Exports the synthetic rig (synthetic-rig.ts) from the development Blockbench and checks the data packs on
 // a 1.20.4 server: they load without errors, the calls behave as designed, every tick of every animation
 // leaves each bone at the pose Blockbench sampled, and two rigs warm one chunk per tick, by priority. A third,
-// thinned rig is checked against its planned writes: each bone holds the end of its current run with the run's
-// length, and pause, stop and restart set the values that hold and resume the client's interpolation.
+// thinned rig (all animations but `eased`) is checked against its planned writes: each bone holds the end of its
+// current run with the run's length, and pause, stop and restart set the values that hold and resume the client's
+// interpolation.
 //
 //   bun scripts/export-check.ts [--shots <dir>]
 //
@@ -17,6 +18,7 @@ import { SERVER_DIR, Server } from '../bench/mc'
 import { compose, type Quat, type Vec3 } from '../src/bake/matrix'
 import { uuidString } from '../src/export/datapack'
 import { planFrames, poseString, type FrameWrite } from '../src/export/frames'
+import { toleranceOf } from '../src/export/build'
 import { boneScale } from '../src/export/item-model'
 import { animationRunEnds } from '../src/export/thin'
 import type { RigSettings, RigSource } from '../src/export/types'
@@ -70,8 +72,10 @@ function thinnedPlans(source: RigSource, settings: RigSettings) {
 	const renderable = source.bones.flatMap((b, i) => (b.cubes.length > 0 ? [{ index: i, k: boneScale(b) }] : []))
 	return source.animations.map((a) => {
 		const poses = Array.from({ length: a.ticks + 1 }, (_, f) => renderable.map(({ index, k }) => poseString(a.matrices, (f * source.bones.length + index) * 16, k)))
-		const frames: FrameWrite[][] = planFrames(a.loop, poses, animationRunEnds(a.loop, poses, settings.thin!, settings.span))
-		return { loop: a.loop, ticks: a.ticks, frames, values: poses.map((frame) => frame.map((p) => p.split(',').map((v) => Number.parseFloat(v)))) }
+		const tolerance = toleranceOf(a, settings)
+		const frames: FrameWrite[][] = planFrames(a.loop, poses, tolerance && animationRunEnds(a.loop, poses, tolerance, settings.span))
+		const runs = frames.some((writes) => writes.some((w) => w.duration > 1))
+		return { loop: a.loop, ticks: a.ticks, frames, runs, values: poses.map((frame) => frame.map((p) => p.split(',').map((v) => Number.parseFloat(v)))) }
 	})
 }
 
@@ -155,6 +159,7 @@ async function main(): Promise<void> {
 	const source = await collectSynthetic(model)
 	// Priorities that exercise the order: 'once' first, 'squash' last.
 	source.animations.forEach((a) => (a.priority = a.name === 'once' ? 'xhigh' : a.name === 'squash' ? 'low' : 'high'))
+	source.animations.find((a) => a.name === 'eased')!.thin = 'off'
 	const rigs: RigSettings[] = [
 		{ rig: 'synthetic', id: 0x5e17e000, item: 'minecraft:white_dye', chunkLines: 20, span: 20 },
 		{ rig: 'twin', id: 0x7e1a0001, item: 'minecraft:white_dye', chunkLines: 20, span: 20 },
@@ -341,7 +346,7 @@ async function checkThinned(check: Check, source: RigSource, settings: RigSettin
 	const cooldown = rest.map(() => 0)
 	const apply = (a: number, f: number) => {
 		for (const w of plans[a]!.frames[f]!) {
-			held[w.bone] = { values: plans[a]!.values[w.pose]![w.bone]!, duration: w.duration }
+			held[w.bone] = { values: plans[a]!.values[w.pose]![w.bone]!, duration: plans[a]!.runs || f === 0 ? w.duration : held[w.bone]!.duration }
 			if (f === 0) cooldown[w.bone] = 0
 			else if (w.duration > 1) cooldown[w.bone] = f + w.duration - 1
 		}

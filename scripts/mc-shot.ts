@@ -23,7 +23,7 @@ const HEIGHT = 540
 // After joining, the client shows "Loading terrain" and then builds the chunks around the player.
 const JOIN_SETTLE_MS = 5000
 const RESULTS = join(import.meta.dir, '..', '.shots')
-const COMMAND_ERROR = /Unknown or incomplete command|Incorrect argument for command|<--\[HERE\]|Unknown function/
+const COMMAND_ERROR = /Unknown or incomplete command|Incorrect argument for command|<--\[HERE\]|Unknown function|Failed to instantiate function/
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
@@ -65,9 +65,23 @@ async function shoot(spec: Spec, specDir: string, out: string, poses: string[][]
 		await sleep(JOIN_SETTLE_MS)
 		await client.press(KEY_F1)
 		const files: string[] = []
+		const gametime = async () => Number((await server.run('time query gametime', /The time is (\d+)/))[1])
 		for (const [i, view] of spec.views.entries()) {
 			const from = server.log.length
-			for (const command of poses[i]!) server.send(command)
+			for (const command of poses[i]!) {
+				const step = /^tick step (\d+)$/.exec(command)
+				if (!step) {
+					server.send(command)
+					continue
+				}
+				// A frozen server runs the steps over the next ticks; the following commands wait for them.
+				const target = (await gametime()) + Number(step[1])
+				server.send(command)
+				for (let wait = 0; (await gametime()) < target; wait++) {
+					if (wait > Number(step[1]) + 400) throw new Error(`${command} did not finish`)
+					await sleep(25)
+				}
+			}
 			await server.sync()
 			const errors = server.log.slice(from).filter((line) => COMMAND_ERROR.test(line))
 			if (errors.length > 0) throw new Error(`pose commands of ${view.name} failed:\n${errors.join('\n')}`)

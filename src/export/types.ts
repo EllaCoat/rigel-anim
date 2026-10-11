@@ -40,11 +40,22 @@ export interface TextureSource {
 	uvHeight: number
 }
 
+export interface Tolerance {
+	// Blocks.
+	position: number
+	// Degrees; also the allowed relative scale error.
+	rotation: number
+}
+
+// Thinning of one animation: as the project sets it, none, or its own tolerance.
+export type AnimationThin = 'project' | 'off' | Tolerance
+
 export interface AnimationSource {
 	name: string
 	loop: Loop
 	ticks: number
 	priority: WarmPriority
+	thin: AnimationThin
 	// (ticks + 1) frames × bones × 16, as readBoneMatrices writes them.
 	matrices: Float64Array
 }
@@ -64,6 +75,10 @@ export interface RigSettings {
 	id: number
 	item: string
 	chunkLines: number
+	// The project's thinning tolerance; none when undefined.
+	thin?: Tolerance
+	// Longest run one write may cover, in ticks.
+	span: number
 }
 
 // Path inside a pack → content.

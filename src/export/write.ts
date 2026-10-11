@@ -72,6 +72,7 @@ export interface ExportSummary {
 	rigPack: string
 	commonPack: string
 	files: number
+	writes: { thinned: number; full: number }
 }
 
 export async function exportRig(target: ExportTarget, source: RigSource, settings: RigSettings, options: ExportOptions = {}): Promise<ExportSummary> {
@@ -118,5 +119,5 @@ export async function exportRig(target: ExportTarget, source: RigSource, setting
 	if (!rp.existsSync(join(rpDir, 'pack.mcmeta'))) resources.set('pack.mcmeta', packMeta())
 	writeFiles(rp, rpDir, resources)
 
-	return { rigPack: rigDir, commonPack: commonDir, files: result.rigPack.size + result.commonPack.size + resources.size }
+	return { rigPack: rigDir, commonPack: commonDir, files: result.rigPack.size + result.commonPack.size + resources.size, writes: result.writes }
 }

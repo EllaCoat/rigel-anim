@@ -8,7 +8,7 @@ import { commonPack, MARKER, rigPack, uuidString, type RigPackInput } from '../s
 import { formatFloat, planChunks, planFrames, poseString } from '../src/export/frames'
 import { boneScale, itemModel } from '../src/export/item-model'
 import { mergeItemModel } from '../src/export/resource-pack'
-import type { AnimationSource, BoneSource, Files, RigSettings, RigSource, TextureSource } from '../src/export/types'
+import type { AnimationSource, BoneSource, Files, Loop, RigSettings, RigSource, TextureSource, WarmPriority } from '../src/export/types'
 import { ExportConflict, exportRig, type ExportFs } from '../src/export/write'
 
 const text = (files: Files, path: string) => {
@@ -120,16 +120,25 @@ describe('frames', () => {
 		['A', 'B', 'c'],
 	]
 
+	const w = (bone: number, pose: number, duration = 1) => ({ bone, pose, duration })
+
 	test('f/0 writes every bone and later frames only the changed ones', () => {
-		expect(planFrames('hold', poses)).toEqual([
-			{ writes: [0, 1, 2], pose: 0 },
-			{ writes: [1], pose: 1 },
-			{ writes: [0], pose: 2 },
-		])
+		expect(planFrames('hold', poses)).toEqual([[w(0, 0), w(1, 0), w(2, 0)], [w(1, 1)], [w(0, 2)]])
 	})
 
 	test("a loop's last frame goes back to frame 0", () => {
-		expect(planFrames('loop', poses)[2]).toEqual({ writes: [1], pose: 0 })
+		expect(planFrames('loop', poses)[2]).toEqual([w(1, 0)])
+	})
+
+	test('a run is one write at its start with the pose of its end, unless the bone already has that pose', () => {
+		const runs = [
+			[0, 2],
+			[0, 2],
+			[0, 1, 2],
+		]
+		expect(planFrames('hold', poses, (b) => runs[b]!)).toEqual([[w(0, 0), w(1, 0), w(2, 0)], [w(0, 2, 2), w(1, 2, 2)], []])
+		// A loop's last frame has the pose of frame 0, so a run over all frames ends where every bone starts.
+		expect(planFrames('loop', poses, () => [0, 2])).toEqual([[w(0, 0), w(1, 0), w(2, 0)], [], []])
 	})
 
 	test('chunks hold whole frames up to the line limit', () => {
@@ -141,7 +150,8 @@ describe('frames', () => {
 })
 
 describe('data pack', () => {
-	const input = (overrides: Partial<RigPackInput> = {}): RigPackInput => ({
+	const animation = (name: string, loop: Loop, priority: WarmPriority, poses: string[][], ends?: (bone: number) => number[]) => ({ name, loop, priority, poses, frames: planFrames(loop, poses, ends) })
+	const input =(overrides: Partial<RigPackInput> = {}): RigPackInput => ({
 		rig: 'axia',
 		id: 0x1a2b3c4d,
 		item: 'minecraft:white_dye',
@@ -151,9 +161,9 @@ describe('data pack', () => {
 			{ cmd: 5, rest: 'r1' },
 		],
 		animations: [
-			{ name: 'idle', loop: 'loop', priority: 'high', poses: [['a', 'b'], ['a', 'B'], ['A', 'B']] },
-			{ name: 'swing', loop: 'once', priority: 'xhigh', poses: [['c', 'd'], ['C', 'd']] },
-			{ name: 'down', loop: 'hold', priority: 'high', poses: [['e', 'f']] },
+			animation('idle', 'loop', 'high', [['a', 'b'], ['a', 'B'], ['A', 'B']]),
+			animation('swing', 'once', 'xhigh', [['c', 'd'], ['C', 'd']]),
+			animation('down', 'hold', 'high', [['e', 'f']]),
 		],
 		...overrides,
 	})
@@ -219,6 +229,62 @@ describe('data pack', () => {
 		expect(lines(rigPack(input({ id: 0xfedcba98 })), fn('spawn'))[1]).toContain(`UUID:[I;${0xfedcba98 | 0},0,0,0]`)
 	})
 
+	test('without runs over several ticks, stop, pause, restart and rest stay as they are', () => {
+		expect(lines(files, fn('stop'))).toEqual(['scoreboard players set $Rigel.axia Rigel.Playing 0'])
+		expect(lines(files, fn('pause'))).toHaveLength(2)
+		expect(lines(files, fn('restart'))).toHaveLength(2)
+		expect(files.has(fn('resume'))).toBe(false)
+		expect(lines(files, fn('rest'))[0]).toBe('data merge entity 1a2b3c4d-0-0-0-1 {transformation:[r0,0f,0f,0f,1f],start_interpolation:0}')
+	})
+
+	describe('with a run over several ticks', () => {
+		// Bone 1 of idle covers frames 0 to 2 with one write at frame 1.
+		const thinned = rigPack(
+			input({
+				animations: [
+					animation('idle', 'hold', 'high', [['a', 'b'], ['a', 'B'], ['A', 'X']], (b) => (b === 1 ? [0, 2] : [0, 1, 2])),
+					animation('swing', 'once', 'xhigh', [['c', 'd'], ['C', 'd']]),
+				],
+			}),
+		)
+		const write = (n: number, head: string, values: string, tail = '$(_)') => `$data merge entity 1a2b3c4d-0-0-0-${n} {${head}transformation:[${values}${tail}`
+
+		test('every write sets the interpolation length, and the long one the frame its run ends at', () => {
+			const first = 'shadow_strength:1f,PortalCooldown:0,interpolation_duration:1,'
+			expect(lines(thinned, fn('frames/0/0')).slice(1)).toEqual([write(1, first, 'a', '$(s)'), write(2, first, 'b', '$(s)')])
+			expect(lines(thinned, fn('frames/0/1')).slice(1)).toEqual([write(2, 'PortalCooldown:2,interpolation_duration:2,', 'X')])
+			expect(lines(thinned, fn('frames/0/2')).slice(1)).toEqual([write(1, 'interpolation_duration:1,', 'A'), 'scoreboard players set $Rigel.axia Rigel.Playing 0'])
+			expect(lines(thinned, fn('frames/1/1')).slice(1)).toEqual([write(1, 'interpolation_duration:1,', 'C')])
+		})
+
+		test('f/0 and rest leave start_interpolation out', () => {
+			expect(lines(thinned, fn('load'))).toContain('data modify storage rigel:axia s set value ",0f,0f,0f,1f]}"')
+			expect(lines(thinned, fn('play')).at(-1)).toBe('$function rigel:axia/frames/$(ID)/0 with storage rigel:axia')
+			const warmed = ['xhigh', 'high'].flatMap((p) => [...thinned.keys()].filter((k) => k.includes(`/warm/${p}/`)).flatMap((k) => lines(thinned, k)))
+			expect(warmed.filter((l) => l.includes('/0 with'))).toEqual(['function rigel:axia/frames/1/0 with storage rigel:axia', 'function rigel:axia/frames/0/0 with storage rigel:axia'])
+			expect(warmed.filter((l) => l.includes('/1 with'))[0]).toEndWith('with storage rigel:const FrameArgs')
+			expect(lines(thinned, fn('rest'))[0]).toBe('data merge entity 1a2b3c4d-0-0-0-1 {interpolation_duration:1,transformation:[r0,0f,0f,0f,1f]}')
+		})
+
+		test('stop and pause hold every bone where the client shows it, and restart finishes the runs', () => {
+			const hold = 'execute as 1a2b3c4d-0-0-0-0 on passengers run data merge entity @s {shadow_strength:.999f,interpolation_duration:1000000000,start_interpolation:0}'
+			expect(lines(thinned, fn('stop'))).toEqual(['scoreboard players set $Rigel.axia Rigel.Playing 0', hold])
+			expect(lines(thinned, fn('pause')).at(-1)).toBe(hold)
+			expect(lines(thinned, fn('restart')).slice(-3)).toEqual([
+				'scoreboard players operation $Rigel.At Rigel.Temp = $Rigel.axia Rigel.Frame',
+				'execute if score $Rigel.At Rigel.Temp matches 0 run scoreboard players set $Rigel.At Rigel.Temp 2147483647',
+				'execute as 1a2b3c4d-0-0-0-0 on passengers run function rigel:axia/resume',
+			])
+			expect(lines(thinned, fn('resume'))).toEqual([
+				'execute store result score $Rigel.Left Rigel.Temp run data get entity @s PortalCooldown',
+				'scoreboard players operation $Rigel.Left Rigel.Temp -= $Rigel.At Rigel.Temp',
+				'execute if score $Rigel.Left Rigel.Temp matches ..0 run scoreboard players set $Rigel.Left Rigel.Temp 1',
+				'execute store result entity @s interpolation_duration int 1 run scoreboard players get $Rigel.Left Rigel.Temp',
+				'data merge entity @s {shadow_strength:1f,start_interpolation:0}',
+			])
+		})
+	})
+
 	test('the common pack drops a registration whose chunk cannot be called', () => {
 		const common = commonPack()
 		expect(lines(common, 'data/rigel/functions/core/warm/high.mcfunction')).toEqual([
@@ -270,12 +336,16 @@ describe('resource pack', () => {
 })
 
 describe('settings', () => {
-	const settings = (s: Partial<RigSettings>): RigSettings => ({ rig: 'axia', id: 1, item: 'minecraft:white_dye', chunkLines: 500, ...s })
+	const settings = (s: Partial<RigSettings>): RigSettings => ({ rig: 'axia', id: 1, item: 'minecraft:white_dye', chunkLines: 500, span: 20, ...s })
 	test('reserved and malformed values are reported', () => {
 		expect(settingsProblems(settings({}))).toEqual([])
 		for (const rig of ['core', 'const', 'warm', 'rigel', 'Axia', 'a-b', '']) expect(settingsProblems(settings({ rig })).length).toBe(1)
 		expect(settingsProblems(settings({ item: 'white dye' })).length).toBe(1)
 		expect(settingsProblems(settings({ chunkLines: 0 })).length).toBe(1)
+		expect(settingsProblems(settings({ span: 0 })).length).toBe(1)
+		expect(settingsProblems(settings({ thin: { position: 0.01, rotation: 0.5 } }))).toEqual([])
+		expect(settingsProblems(settings({ thin: { position: -1, rotation: 0.5 } })).length).toBe(1)
+		expect(settingsProblems(settings({ thin: { position: 0.01, rotation: Number.NaN } })).length).toBe(1)
 		expect(normalizeItem(' white_dye ')).toBe('minecraft:white_dye')
 	})
 })
@@ -284,7 +354,7 @@ describe('settings', () => {
 function source(): RigSource {
 	const identity = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
 	const moved = (y: number) => identity.map((v, i) => (i === 13 ? y : v))
-	const animation: AnimationSource = { name: 'bob', loop: 'loop', ticks: 2, priority: 'high', matrices: Float64Array.from([...moved(0), ...moved(0.5), ...moved(0)]) }
+	const animation: AnimationSource = { name: 'bob', loop: 'loop', ticks: 2, priority: 'high', thin: 'project', matrices: Float64Array.from([...moved(0), ...moved(0.5), ...moved(0)]) }
 	return {
 		bones: [{ name: 'Body', pivot: [0, 0, 0], cubes: [cube([-4, 0, -4], [4, 8, 4])] }],
 		textures: [TEXTURE],
@@ -294,7 +364,7 @@ function source(): RigSource {
 }
 
 describe('export', () => {
-	const settings: RigSettings = { rig: 'axia', id: 0x1a2b3c4d, item: 'minecraft:white_dye', chunkLines: 500 }
+	const settings: RigSettings = { rig: 'axia', id: 0x1a2b3c4d, item: 'minecraft:white_dye', chunkLines: 500, span: 20 }
 
 	test('matrices become the values written each frame', () => {
 		const result = buildExport(source(), settings, undefined)

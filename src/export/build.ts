@@ -1,8 +1,9 @@
 import { commonPack, NAMESPACE, RESERVED_RIG_NAMES, rigPack } from './datapack'
-import { poseString } from './frames'
+import { planFrames, poseString } from './frames'
 import { itemModel } from './item-model'
 import { itemModelPath, mergeItemModel } from './resource-pack'
-import type { Files, RigSettings, RigSource } from './types'
+import { animationRunEnds } from './thin'
+import type { AnimationSource, Files, RigSettings, RigSource, Tolerance } from './types'
 
 export class ExportError extends Error {
 	constructor(readonly problems: string[]) {
@@ -25,7 +26,16 @@ export function settingsProblems(s: RigSettings): string[] {
 	if (!ITEM.test(s.item)) problems.push('元の item は、minecraft:white_dye のような ID で入力してください。')
 	if (!Number.isInteger(s.chunkLines) || s.chunkLines < 1) problems.push('温めの 1 かたまりの行数は、1 以上の整数にしてください。')
 	if (!Number.isInteger(s.id) || s.id < 1 || s.id > 0xffffffff) problems.push('固有 ID が正しくありません（1〜4294967295 の整数ではありません）。')
+	if (s.thin && !validTolerance(s.thin)) problems.push('間引きの許容誤差は、位置・向きとも 0 以上の数にしてください。')
+	if (!Number.isInteger(s.span) || s.span < 1) problems.push('間引きの区間の上限は、1 以上の整数にしてください。')
 	return problems
+}
+
+const validTolerance = (t: Tolerance) => Number.isFinite(t.position) && Number.isFinite(t.rotation) && t.position >= 0 && t.rotation >= 0
+
+function toleranceOf(animation: AnimationSource, settings: RigSettings): Tolerance | undefined {
+	if (animation.thin === 'off') return undefined
+	return animation.thin === 'project' ? settings.thin : animation.thin
 }
 
 // Lowercase letters, digits and _, unique among the names already taken.
@@ -44,10 +54,13 @@ export interface ExportResult {
 	resources: Files
 	// The item's model with this rig's overrides merged in.
 	itemModel: { path: string; json: string }
+	// Bone writes in the frame functions, and how many there would be without thinning.
+	writes: { thinned: number; full: number }
 }
 
 export function buildExport(source: RigSource, settings: RigSettings, existingItemModel: string | undefined): ExportResult {
 	const problems = settingsProblems(settings)
+	for (const a of source.animations) if (typeof a.thin === 'object' && !validTolerance(a.thin)) problems.push(`アニメ「${a.name}」の間引きの許容誤差は、位置・向きとも 0 以上の数にしてください。`)
 	const renderable = source.bones.flatMap((bone, index) => (bone.cubes.length > 0 ? [{ bone, index }] : []))
 	if (renderable.length === 0) problems.push('Cube を持つ Bone がありません。')
 	if (problems.length > 0) throw new ExportError(problems)
@@ -67,6 +80,16 @@ export function buildExport(source: RigSource, settings: RigSettings, existingIt
 
 	const bones = source.bones.length
 	const pose = (matrices: Float64Array, frame: number) => renderable.map(({ index }, r) => poseString(matrices, (frame * bones + index) * 16, models[r]!.scale))
+	const writes = { thinned: 0, full: 0 }
+	const animations = source.animations.map((a) => {
+		const poses = Array.from({ length: a.ticks + 1 }, (_, f) => pose(a.matrices, f))
+		const tolerance = toleranceOf(a, settings)
+		const frames = planFrames(a.loop, poses, tolerance && animationRunEnds(a.loop, poses, tolerance, settings.span))
+		const count = (plan: typeof frames) => plan.reduce((t, w) => t + w.length, 0)
+		writes.thinned += count(frames)
+		writes.full += tolerance ? count(planFrames(a.loop, poses)) : count(frames)
+		return { name: a.name, loop: a.loop, priority: a.priority, poses, frames }
+	})
 	return {
 		rigPack: rigPack({
 			rig: settings.rig,
@@ -74,15 +97,11 @@ export function buildExport(source: RigSource, settings: RigSettings, existingIt
 			item: settings.item,
 			chunkLines: settings.chunkLines,
 			bones: renderable.map(({ index }, r) => ({ cmd: merged.cmds[r]!, rest: poseString(source.rest, index * 16, models[r]!.scale) })),
-			animations: source.animations.map((a) => ({
-				name: a.name,
-				loop: a.loop,
-				priority: a.priority,
-				poses: Array.from({ length: a.ticks + 1 }, (_, f) => pose(a.matrices, f)),
-			})),
+			animations,
 		}),
 		commonPack: commonPack(),
 		resources,
 		itemModel: { path: itemModelPath(settings.item), json: merged.json },
+		writes,
 	}
 }

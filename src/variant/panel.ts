@@ -148,7 +148,7 @@ function editCurrent(label: string, change: (variant: StoredVariant) => void): v
 
 // A row of the list: sets the variant of the keyframes selected in the timeline, and shows the variant.
 function pick(id: string): void {
-	const keyframes = selectedVariantKeyframes()
+	const keyframes = selectedVariantKeyframes().filter((kf) => keyframeVariant(kf) !== id)
 	if (keyframes.length > 0) setKeyframeVariants(keyframes, id)
 	choose(id)
 }

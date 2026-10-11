@@ -17,7 +17,19 @@ async function open(model: any, name: string) {
 	for (const node of [...Outliner.elements, ...Group.all]) (node as { visibility: boolean }).visibility = true
 	Canvas.updateVisibility()
 	Modes.options.animate!.select()
+	await textDrawn()
 	return { format: Format.id, elements: Outliner.elements.length }
+}
+
+// The plugin draws text displays once Minecraft's font has loaded, a while after the groups are made.
+async function textDrawn(timeoutMs = 60_000): Promise<void> {
+	const deadline = Date.now() + timeoutMs
+	const waiting = () =>
+		Group.all.filter((g) => (g as unknown as { rigel_display?: { kind?: string } }).rigel_display?.kind === 'text' && !(g.mesh as THREE.Object3D).getObjectByName('rigel_display_preview')?.children.length)
+	while (waiting().length > 0) {
+		if (Date.now() > deadline) throw new Error(`text displays not drawn: ${waiting().map((g) => g.name).join(', ')}`)
+		await new Promise((r) => setTimeout(r, 100))
+	}
 }
 
 // The pose the export samples for this tick (src/bake/sample.ts), or the rest pose.

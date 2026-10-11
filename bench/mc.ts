@@ -155,7 +155,8 @@ export class Server {
 
 	// `world` is the folder under SERVER_DIR the server loads (and creates when missing); WORLD by default.
 	private constructor(world?: string) {
-		const args = [`-Xms${HEAP}`, `-Xmx${HEAP}`, '-jar', 'server.jar', 'nogui', ...(world ? ['--world', world] : [])]
+		// The console log is written in the default charset, which on Windows is not UTF-8; the output is read as UTF-8.
+		const args = [`-Xms${HEAP}`, `-Xmx${HEAP}`, '-Dfile.encoding=UTF-8', '-jar', 'server.jar', 'nogui', ...(world ? ['--world', world] : [])]
 		this.proc = spawn(javaPath(), args, { cwd: SERVER_DIR })
 		this.output = new Output(this.proc, 'server')
 	}

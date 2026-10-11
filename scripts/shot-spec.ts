@@ -21,6 +21,8 @@ export interface View {
 	pitch: number
 	// Without a pose the rig shows its rest pose.
 	pose?: Pose
+	// Server console commands run after the pose, before the screenshot.
+	commands?: string[]
 }
 
 export interface Spec {
@@ -71,6 +73,7 @@ function view(value: unknown, i: number): View {
 	// Straight up or down leaves Blockbench's camera without an up direction.
 	if (typeof v.pitch !== 'number' || !(Math.abs(v.pitch) < 90)) fail(`${at}.pitch must be between -90 and 90 (exclusive)`)
 	const out: View = { name: v.name, eye: vec3(v.eye, `${at}.eye`), yaw: v.yaw, pitch: v.pitch }
+	if (v.commands !== undefined) out.commands = strings(v.commands, `${at}.commands`)
 	if (v.pose !== undefined) {
 		const p = v.pose as Record<string, unknown>
 		if (typeof p.animation !== 'string' || !Number.isInteger(p.tick) || (p.tick as number) < 0) fail(`${at}.pose must be { animation: name, tick: whole number ≥ 0 }`)
@@ -134,6 +137,10 @@ const TICKS_PER_SECOND = 20
 // Console commands that put the rig in the view's pose: f/0 writes every bone and later frames the
 // changes, so calling them in order reaches the tick from any earlier state.
 export function poseCommands(spec: Spec, animations: { name: string; length: number }[], view: View): string[] {
+	return [...posing(spec, animations, view), ...(view.commands ?? [])]
+}
+
+function posing(spec: Spec, animations: { name: string; length: number }[], view: View): string[] {
 	if (!spec.rig) return []
 	const call = (name: string) => `function rigel:${spec.rig}/${name}`
 	// A play view leaves the server frozen, where the client stops redrawing the rig, and the animation playing.

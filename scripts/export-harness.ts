@@ -16,10 +16,11 @@ function collect() {
 	const source = collectRig()
 	const base64 = (bytes: Uint8Array) => btoa(Array.from(bytes, (b) => String.fromCharCode(b)).join(''))
 	return {
-		bones: source.bones,
+		...source,
 		textures: source.textures.map((t) => ({ ...t, png: base64(t.png) })),
 		rest: Array.from(source.rest),
-		animations: source.animations.map((a) => ({ ...a, matrices: Array.from(a.matrices) })),
+		locatorRest: Array.from(source.locatorRest),
+		animations: source.animations.map((a) => ({ ...a, matrices: Array.from(a.matrices), locators: Array.from(a.locators) })),
 	}
 }
 

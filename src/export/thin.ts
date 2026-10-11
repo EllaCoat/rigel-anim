@@ -163,7 +163,7 @@ function change(a: ArrayLike<number>, b: ArrayLike<number>): { rotation: number;
 // A client that takes in the writes of several ticks between two of its ticks (packets bunching up, a slow frame, a
 // server catching up) applies only the last, and starts its run from the pose it drew last. The writes of up to this
 // many ticks at once keep the pose right.
-// ponytail: a frame stuck over ~150 ms can still show a bone hidden at once shrinking over the next run; raise if seen.
+// ponytail: a frame stuck over ~200 ms can still show a bone hidden at once shrinking over the next run; raise if seen.
 const MERGED = 3
 
 // One bone's runs (see Runs). The run from k to j is one write at frame k + 1 with the pose of frame j, interpolated
@@ -171,9 +171,9 @@ const MERGED = 3
 // When the writes of the one-tick runs right before it are lost, the client starts the run from a pose between where
 // the last one it applied started and ended. The run then has to hold from those starts too, give or take its own
 // largest change in a tick for each lost write, so that a bone hidden or moved at once is not shown going there over
-// the whole run. A one-tick run within MERGED ticks after the bone is hidden or shown is a snap, shown at once: drawn
-// partway, it would pass part of the bone's size on to the next run. The first runs, whose start is the pose before
-// play or the end of the loop, last one tick.
+// the whole run. A one-tick run that ends with the bone hidden is a snap, shown at once: drawn partway, it would pass
+// part of the bone's size on to the next run, and the client starts the run after a snap right at its pose. The first
+// runs, whose start is the pose before play or the end of the loop, last one tick.
 export function runEnds(poses: ArrayLike<number>[], tolerance: Tolerance, span: number): Runs {
 	const radians = tolerance.rotation * DEGREE
 	const splits = poses.map(split)
@@ -199,7 +199,7 @@ export function runEnds(poses: ArrayLike<number>[], tolerance: Tolerance, span: 
 			if (!starts.every(lost)) break
 			j++
 		}
-		if (j === k + 1 && Array.from({ length: Math.min(MERGED, k) }, (_, i) => k - 1 - i).some((from) => hidden[from] !== hidden[k])) snaps.push(j)
+		if (j === k + 1 && hidden[j]) snaps.push(j)
 		ends.push(j)
 		k = j
 	}

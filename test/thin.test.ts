@@ -89,16 +89,16 @@ describe('runEnds', () => {
 	test('a hidden bone that moves is one run, and showing it again is written on time', () => {
 		const q = axisAngle([0, 1, 0], 10)
 		const hidden = track(21, (f) => (f < 15 ? values([f * 0.3, Math.sin(f), 0], q, [0, 0, 0]) : values([f * 0.3, 0, 0], q)))
-		expect(runEnds(hidden, tolerance, 20)).toEqual({ ends: [0, 1, 2, 3, 14, 15, 16, 17, 18, 20], snaps: [16, 17, 18] })
+		expect(runEnds(hidden, tolerance, 20)).toEqual({ ends: [0, 1, 2, 3, 14, 15, 16, 17, 18, 20], snaps: [1, 2, 3] })
 	})
 
-	// A client draws a one-tick run partway before it applies the next write, and starts that one from there. The three
-	// runs after hiding stay one tick and are shown at once, so the run after them starts hidden even when the client
-	// takes in up to three writes together.
-	test('the runs after hiding a bone at once stay one tick and are shown at once', () => {
+	// A client draws a one-tick run partway before it applies the next write, and starts that one from there. Hiding and
+	// the three one-tick runs after it are shown at once, so the run after them starts hidden even when the client takes
+	// in the writes of up to four ticks together.
+	test('hiding a bone and the runs after it stay one tick and are shown at once', () => {
 		const q = axisAngle([0, 1, 0], 10)
 		const hiding = track(31, (f) => (f < 10 ? values([1, 0, 0], q) : values([1 + f * 0.1, 0, 0], q, [0, 0, 0])))
-		expect(runEnds(hiding, tolerance, 20)).toEqual({ ends: [0, 1, 2, 3, 9, 10, 11, 12, 13, 30], snaps: [11, 12, 13] })
+		expect(runEnds(hiding, tolerance, 20)).toEqual({ ends: [0, 1, 2, 3, 9, 10, 11, 12, 13, 30], snaps: [10, 11, 12, 13] })
 	})
 
 	// The run at 10 is cut short: starting three ticks back, the client would be further behind than three of its
@@ -124,5 +124,11 @@ describe('animationRunEnds', () => {
 		expect(animationRunEnds('hold', poses, tolerance, 20)(0).ends).toEqual([0, 1, 2, 3, 7])
 		// Looping back from 0.6 to 0 breaks the straight line at frame 6.
 		expect(animationRunEnds('loop', poses, tolerance, 20)(0).ends).toEqual([0, 1, 2, 3, 6, 7])
+	})
+
+	test('a bone hidden by looping back to frame 0 is hidden at once, and so are the first runs after it', () => {
+		const showing = (f: number) => values([f * 0.1, 0, 0], axisAngle([0, 0, 1], 0), f < 10 ? [0, 0, 0] : [1, 1, 1])
+		const poses = Array.from({ length: 31 }, (_, f) => [showing(f).map((v) => `${v}f`).join(',')])
+		expect(animationRunEnds('loop', poses, tolerance, 20)(0)).toEqual({ ends: [0, 1, 2, 3, 9, 10, 11, 12, 13, 29, 30], snaps: [1, 2, 3, 30] })
 	})
 })

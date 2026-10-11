@@ -52,16 +52,16 @@ describe('split', () => {
 describe('runEnds', () => {
 	const track = (frames: number, pose: (f: number) => number[]) => Array.from({ length: frames }, (_, f) => pose(f))
 
-	// The first two runs last one tick: their start is the pose before play.
+	// The first three runs last one tick: their start is the pose before play.
 	test('straight motion at a steady speed is one run as long as the span allows', () => {
 		const moving = track(41, (f) => values([f * 0.05, 0, 0], axisAngle([0, 0, 1], 0)))
-		expect(runEnds(moving, tolerance, 20)).toEqual([0, 1, 2, 22, 40])
-		expect(runEnds(moving, tolerance, 100)).toEqual([0, 1, 2, 40])
+		expect(runEnds(moving, tolerance, 20)).toEqual([0, 1, 2, 3, 23, 40])
+		expect(runEnds(moving, tolerance, 100)).toEqual([0, 1, 2, 3, 40])
 	})
 
 	test('turning at a steady speed follows the slerp', () => {
 		const turning = track(25, (f) => values([0, 0, 0], axisAngle([1, 2, 0], f * 6)))
-		expect(runEnds(turning, tolerance, 30)).toEqual([0, 1, 2, 24])
+		expect(runEnds(turning, tolerance, 30)).toEqual([0, 1, 2, 3, 24])
 	})
 
 	test('curved motion needs more runs the tighter the tolerance, and every frame stays within it', () => {
@@ -83,33 +83,35 @@ describe('runEnds', () => {
 
 	test('a still bone is one run per span', () => {
 		const still = track(45, () => values([1, 0, 0], axisAngle([0, 1, 0], 10)))
-		expect(runEnds(still, tolerance, 20)).toEqual([0, 1, 2, 22, 42, 44])
+		expect(runEnds(still, tolerance, 20)).toEqual([0, 1, 2, 3, 23, 43, 44])
 	})
 
 	test('a hidden bone that moves is one run, and showing it again is written on time', () => {
 		const q = axisAngle([0, 1, 0], 10)
 		const hidden = track(21, (f) => (f < 15 ? values([f * 0.3, Math.sin(f), 0], q, [0, 0, 0]) : values([f * 0.3, 0, 0], q)))
-		expect(runEnds(hidden, tolerance, 20)).toEqual([0, 1, 2, 14, 15, 16, 17, 20])
+		expect(runEnds(hidden, tolerance, 20)).toEqual([0, 1, 2, 3, 14, 15, 16, 17, 18, 20])
 	})
 
-	// A client that takes in the writes of frames 10 to 12 together never sees the bone hidden at 10, and goes from
-	// the shown pose of frame 9 toward the end of the run written at 12: the two runs after hiding stay one tick.
+	// A client that applies frame 10's write (hiding the bone) but draws it barely started, then takes in the writes of
+	// frames 11 to 13 together, starts the run written at 13 from the shown pose of frame 9: the three runs after hiding
+	// stay one tick, so that run still ends hidden a tick later.
 	test('the runs after hiding a bone at once stay one tick', () => {
 		const q = axisAngle([0, 1, 0], 10)
 		const hiding = track(31, (f) => (f < 10 ? values([1, 0, 0], q) : values([1 + f * 0.1, 0, 0], q, [0, 0, 0])))
-		expect(runEnds(hiding, tolerance, 20)).toEqual([0, 1, 2, 9, 10, 11, 12, 30])
+		expect(runEnds(hiding, tolerance, 20)).toEqual([0, 1, 2, 3, 9, 10, 11, 12, 13, 30])
 	})
 
-	test('a run after a one-tick run in fast motion still spans several ticks', () => {
+	// The run at 10 is cut short: starting three ticks back, the client would be further behind than three of its
+	// ticks. The runs after it are cut only where a slerp would turn the short way round.
+	test('runs after one-tick runs in fast motion still span several ticks', () => {
 		const angle = (f: number) => (f < 10 ? 2 * f * f : 200 + 30 * (f - 10))
 		const ends = runEnds(track(31, (f) => values([0, 0, 0], axisAngle([0, 0, 1], angle(f)))), tolerance, 20)
-		expect(ends.slice(0, 11)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
-		expect(ends[11]! - ends[10]!).toBeGreaterThan(2)
+		expect(ends).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 17, 23, 28, 30])
 	})
 
 	test('a slightly sheared bone turning at a steady speed is still one run', () => {
 		const turning = track(21, (f) => values([0, 0, 0], axisAngle([0, 0, 1], f * 3), [1.02, 0.99, 1], 0.01))
-		expect(runEnds(turning, tolerance, 20)).toEqual([0, 1, 2, 20])
+		expect(runEnds(turning, tolerance, 20)).toEqual([0, 1, 2, 3, 20])
 	})
 })
 
@@ -117,9 +119,9 @@ describe('animationRunEnds', () => {
 	const pose = (x: number) => values([x, 0, 0], axisAngle([0, 0, 1], 0)).map((v) => `${v}f`).join(',')
 
 	test("reads the written values, and a loop's last frame takes the pose of frame 0", () => {
-		const poses = [0, 0.1, 0.2, 0.3].map((x) => [pose(x)])
-		expect(animationRunEnds('hold', poses, tolerance, 20)(0)).toEqual([0, 1, 2, 3])
-		// Looping back from 0.2 to 0 breaks the straight line at frame 2.
-		expect(animationRunEnds('loop', poses, tolerance, 20)(0)).toEqual([0, 1, 2, 3])
+		const poses = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7].map((x) => [pose(x)])
+		expect(animationRunEnds('hold', poses, tolerance, 20)(0)).toEqual([0, 1, 2, 3, 7])
+		// Looping back from 0.6 to 0 breaks the straight line at frame 6.
+		expect(animationRunEnds('loop', poses, tolerance, 20)(0)).toEqual([0, 1, 2, 3, 6, 7])
 	})
 })

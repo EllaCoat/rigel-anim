@@ -160,16 +160,18 @@ function change(a: ArrayLike<number>, b: ArrayLike<number>): { rotation: number;
 	return { rotation, position: Math.hypot(a[3]! - b[3]!, a[7]! - b[7]!, a[11]! - b[11]!) }
 }
 
-// Writes of up to this many ticks that reach a client between two of its ticks (a frame over 100 ms, a server catching
-// up) keep the pose right: the client applies only the last of them.
+// A client that takes in the writes of several ticks between two of its ticks (packets bunching up, a slow frame, a
+// server catching up) applies only the last, and starts its run from the pose it drew last. Up to this many writes at
+// once keep the pose right.
+// ponytail: a frame stuck over ~150 ms can still show a bone hidden at once shrinking over the next run; raise if seen.
 const MERGED = 3
 
 // Frames where one bone's runs end, from 0 to the last frame. The run from k to j is one write at frame k + 1 with the
 // pose of frame j, interpolated over j − k ticks, and covers at most `span` ticks. poses: each frame's written values.
-// When the writes of the one-tick runs right before it are lost, the client starts the run from where they started. The
-// run then has to hold from there too, give or take its own largest change in a tick for each lost write, so that a bone
-// hidden or moved at once is not shown going there over the whole run. The first runs, whose start is the pose before
-// play or the end of the loop, last one tick.
+// When the writes of the one-tick runs right before it are lost, the client starts the run from a pose between where
+// the last one it applied started and ended. The run then has to hold from those starts too, give or take its own
+// largest change in a tick for each lost write, so that a bone hidden or moved at once is not shown going there over
+// the whole run. The first runs, whose start is the pose before play or the end of the loop, last one tick.
 export function runEnds(poses: ArrayLike<number>[], tolerance: Tolerance, span: number): number[] {
 	const radians = tolerance.rotation * DEGREE
 	const splits = poses.map(split)
@@ -183,10 +185,10 @@ export function runEnds(poses: ArrayLike<number>[], tolerance: Tolerance, span: 
 	let k = 0
 	while (k < last) {
 		const starts: number[] = []
-		for (let i = ends.length - 1; i > 0 && starts.length < MERGED - 1 && ends[i]! - ends[i - 1]! === 1; i--) starts.push(ends[i - 1]!)
+		for (let i = ends.length - 1; i > 0 && starts.length < MERGED && ends[i]! - ends[i - 1]! === 1; i--) starts.push(ends[i - 1]!)
 		let j = k + 1
 		let fastest = steps[k]!
-		while (k >= MERGED - 1 && j < last && j + 1 - k <= span) {
+		while (k >= MERGED && j < last && j + 1 - k <= span) {
 			fastest = { rotation: Math.max(fastest.rotation, steps[j]!.rotation), position: Math.max(fastest.position, steps[j]!.position) }
 			if (!holds(k, k, j + 1, tolerance.position, radians)) break
 			const lost = (from: number) => holds(from, k, j + 1, tolerance.position + (k - from) * fastest.position, radians + (k - from) * fastest.rotation)

@@ -259,6 +259,12 @@ async function main(): Promise<void> {
 	const server = await Server.start(WORLD_NAME)
 	const check = new Check(server)
 	const report: Record<string, unknown> = {}
+	// What synthetic-rig.ts builds, so that a part collect loses fails here instead of leaving its checks nothing to check.
+	const displays = source.bones.flatMap((b) => (b.display ? [`${b.name}:${b.display.kind}`] : [])).sort()
+	check.expect(displays.join() === 'ice:block,label:text,note:text,sword:item', `collect gave the displays ${displays.join()}`)
+	const locators = source.locators.map((l) => `${l.name}${l.entity ? ' with an entity' : ''}`).sort()
+	check.expect(locators.join() === 'mark with an entity,tip', `collect gave the locators ${locators.join()}`)
+	check.expect(source.variants.map((v) => `${v.name}:${v.textures.length}:${v.excluded.length}`).join() === 'alt:1:1', 'collect lost the variant, its textures or its excluded bone')
 	try {
 		// Start-up lines (offline mode, the flat world's settings) are about the test server, not the packs;
 		// the reload below loads every function again.
@@ -472,6 +478,9 @@ async function checkVariant(check: Check, source: RigSource, world: string, bone
 		}
 		const onApply = source.variants.find((x) => x.name === v)?.onApply
 		if (onApply) check.expect(((await check.score('$Applied', 'Rigel.Temp')) ?? 0) === applied + 1, `variant ${v}: ${onApply} did not run`)
+		// Every bone uses the swapped texture: the variant writes all but its excluded bones, and default writes them all.
+		const excludedCount = source.variants.find((x) => x.name === v)?.excluded.length ?? 0
+		check.expect(planned.length === models.length - excludedCount, `variant ${v}: ${planned.length} writes, expected ${models.length - excludedCount}`)
 		report[v] = planned.length
 	}
 	const restored = await cmds()
@@ -658,7 +667,7 @@ function shotSpec() {
 			commands: ['kill @e[tag=check.shot]', ...['tip', 'mark'].map((l) => `function rigel:synthetic/at_locator/${l} {function:"check:shot_marker"}`)],
 		})),
 		// Last, so the other views keep the project's own textures.
-		{ name: 'variant-alt', eye: [0, 1.2, 3.5], yaw: 180, pitch: 10, commands: ['kill @e[tag=check.shot]', 'function rigel:synthetic/variant/alt'] },
+		{ name: 'variant-alt', eye: [0, 1.2, 3.5], yaw: 180, pitch: 10, variant: 'alt', commands: ['kill @e[tag=check.shot]'] },
 	]
 	return {
 		origin: [0, -60, 0],

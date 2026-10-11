@@ -22,6 +22,8 @@ describe('parseSpec', () => {
 		[{ origin: [0, 0, 0], views: [{ ...view, pose: { animation: 'walk', tick: 1.5 } }] }, 'views[0].pose must be'],
 		[{ origin: [0, 0, 0], views: [{ ...view, pose: { animation: 'walk', tick: 1 } }], model: 'rig.bbmodel' }, 'rig must name the rig'],
 		[{ origin: [0, 0, 0], rig: 'axia', views: [{ ...view, pose: { animation: 'walk', tick: 1 } }] }, 'model is needed'],
+		[{ origin: [0, 0, 0], views: [{ ...view, variant: 'alt' }], model: 'rig.bbmodel' }, 'rig must name the rig'],
+		[{ origin: [0, 0, 0], rig: 'axia', views: [{ ...view, variant: 'Alt Skin' }], model: 'rig.bbmodel' }, 'views[0].variant must be a variant name'],
 	])('rejects %j', (input, message) => {
 		expect(() => parseSpec(input)).toThrow(message)
 	})
@@ -41,6 +43,11 @@ describe('poses', () => {
 	test('a view with a pose calls the frames up to its tick, and one without returns to the rest pose', () => {
 		expect(poseCommands(spec, animations, spec.views[0]!)).toEqual(['function rigel:axia/rest'])
 		expect(poseCommands(spec, animations, spec.views[1]!)).toEqual([frame(0), frame(1), frame(2)])
+	})
+
+	test('a view with a variant applies it after the pose, before its own commands', () => {
+		const withVariant = parseSpec({ origin: [0, 0, 0], rig: 'axia', model: 'rig.bbmodel', views: [{ ...view, variant: 'alt', commands: ['say hi'] }] })
+		expect(poseCommands(withVariant, animations, withVariant.views[0]!)).toEqual(['function rigel:axia/rest', 'function rigel:axia/variant/alt', 'say hi'])
 	})
 
 	test('a tick past the end stops at the last frame', () => {

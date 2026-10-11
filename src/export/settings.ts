@@ -4,7 +4,7 @@ import { WARM_PRIORITIES, type AnimationThin, type Tolerance, type WarmPriority 
 export const DEFAULT_CHUNK_LINES = 500
 export const DEFAULT_PRIORITY: WarmPriority = 'high'
 export const DEFAULT_SPAN = 20
-export const DEFAULT_TOLERANCE: Tolerance = { position: 0.01, rotation: 0.5 }
+export const DEFAULT_TOLERANCE: Tolerance = { position: 0, rotation: 0 }
 
 export interface ProjectSettings {
 	rig: string

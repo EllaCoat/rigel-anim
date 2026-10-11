@@ -7,11 +7,14 @@ const MAX_SIDE = 8192
 const MAX_TEXELS = 1 << 24
 
 export interface Raster {
-	/** Size in texels: (layout.width + 1) * texelsPerPixel and (layout.height + 1) * texelsPerPixel. */
+	/** Size in texels. */
 	width: number
 	height: number
 	texelsPerPixel: number
-	/** RGBA, not premultiplied; texel (0, 0) is the top left corner at u = -1, v = -1. */
+	/** Font pixels (u, v) at the top left corner of texel (0, 0): -1, -1 unless something is drawn left of or above the background. */
+	left: number
+	top: number
+	/** RGBA, not premultiplied. */
 	data: Uint8ClampedArray
 }
 
@@ -22,11 +25,46 @@ interface Tint {
 	a: number
 }
 
+interface Bounds {
+	left: number
+	top: number
+	right: number
+	bottom: number
+}
+
+/**
+ * The whole font pixels everything is drawn in: the background quad (u from -1 to the width, v from -1 to the height) and
+ * every glyph with its bold copy, shadow and lines. DisplayRenderer clips none of them to the background.
+ */
+function drawnBounds(layout: TextLayout): Bounds {
+	const bounds = { left: -1, top: -1, right: layout.width, bottom: layout.height }
+	const add = (u0: number, v0: number, u1: number, v1: number) => {
+		bounds.left = Math.min(bounds.left, u0, u1)
+		bounds.top = Math.min(bounds.top, v0, v1)
+		bounds.right = Math.max(bounds.right, u0, u1)
+		bounds.bottom = Math.max(bounds.bottom, v0, v1)
+	}
+	for (const line of layout.lines) {
+		for (const glyph of line.glyphs) {
+			const shadow = layout.shadow ? glyph.info.shadowOffset : 0
+			const baked = glyph.info.bake()
+			if (baked) {
+				const slants = glyph.italic ? [1 - 0.25 * baked.top, 1 - 0.25 * baked.bottom] : [0]
+				const bold = glyph.bold ? glyph.info.boldOffset : 0
+				add(glyph.x + baked.left + Math.min(...slants), line.y + baked.top, glyph.x + baked.right + Math.max(...slants) + bold + shadow, line.y + baked.bottom + shadow)
+			}
+			const lineShadow = layout.shadow ? 1 : 0
+			if (glyph.underlined || glyph.strikethrough) add(glyph.x - 1, line.y + 3.5, glyph.x + glyph.advance + lineShadow, line.y + 9 + lineShadow)
+		}
+	}
+	return { left: Math.floor(bounds.left), top: Math.floor(bounds.top), right: Math.ceil(bounds.right), bottom: Math.ceil(bounds.bottom) }
+}
+
 /**
  * Texels per font pixel: 2 so that half pixels (unihex, centered lines, 4.5 for the strikethrough) are exact, 4 for the
  * quarter-pixel steps of italics, and enough to keep every glyph texel at least one canvas texel (high-resolution bitmaps).
  */
-function chooseTexelsPerPixel(layout: TextLayout): number {
+function chooseTexelsPerPixel(layout: TextLayout, { left, top, right, bottom }: Bounds): number {
 	let wanted = 2
 	for (const line of layout.lines) {
 		for (const glyph of line.glyphs) {
@@ -36,30 +74,42 @@ function chooseTexelsPerPixel(layout: TextLayout): number {
 		}
 	}
 	// ponytail: large layouts lose resolution to stay under the canvas size limits; tile the canvas if that matters
-	const width = layout.width + 1
-	const height = layout.height + 1
+	const width = right - left
+	const height = bottom - top
 	const limit = Math.floor(Math.min(MAX_SIDE / Math.max(width, height), Math.sqrt(MAX_TEXELS / (width * height))))
 	return Math.max(1, Math.min(wanted, limit))
 }
 
 class Surface {
 	readonly data: Uint8ClampedArray
+	readonly width: number
+	readonly height: number
 
 	constructor(
-		readonly width: number,
-		readonly height: number,
+		readonly bounds: Bounds,
 		readonly scale: number,
 	) {
-		this.data = new Uint8ClampedArray(width * height * 4)
+		this.width = (bounds.right - bounds.left) * scale
+		this.height = (bounds.bottom - bounds.top) * scale
+		this.data = new Uint8ClampedArray(this.width * this.height * 4)
 	}
 
-	/** First texel whose center is at or after `coordinate` (font pixels, u or v, which start at -1). */
-	first(coordinate: number) {
-		return Math.ceil((coordinate + 1) * this.scale - 0.5)
+	/** First column whose center is at or after `u` (font pixels). */
+	column(u: number) {
+		return Math.ceil((u - this.bounds.left) * this.scale - 0.5)
 	}
 
-	center(texel: number) {
-		return (texel + 0.5) / this.scale - 1
+	/** First row whose center is at or below `v` (font pixels). */
+	row(v: number) {
+		return Math.ceil((v - this.bounds.top) * this.scale - 0.5)
+	}
+
+	centerU(column: number) {
+		return (column + 0.5) / this.scale + this.bounds.left
+	}
+
+	centerV(row: number) {
+		return (row + 0.5) / this.scale + this.bounds.top
 	}
 
 	/** Source-over onto straight alpha; `r`, `g`, `b` are 0 to 255 and `a` is 0 to 1. */
@@ -77,10 +127,10 @@ class Surface {
 		if (a < ALPHA_CUTOFF) return
 		const [left, right] = x0 < x1 ? [x0, x1] : [x1, x0]
 		const [top, bottom] = y0 < y1 ? [y0, y1] : [y1, y0]
-		const rows = Math.min(this.height, this.first(bottom))
-		const columns = Math.min(this.width, this.first(right))
-		for (let row = Math.max(0, this.first(top)); row < rows; row++) {
-			for (let column = Math.max(0, this.first(left)); column < columns; column++) this.blend(row * this.width + column, r * 255, g * 255, b * 255, a)
+		const rows = Math.min(this.height, this.row(bottom))
+		const columns = Math.min(this.width, this.column(right))
+		for (let row = Math.max(0, this.row(top)); row < rows; row++) {
+			for (let column = Math.max(0, this.column(left)); column < columns; column++) this.blend(row * this.width + column, r * 255, g * 255, b * 255, a)
 		}
 	}
 
@@ -92,14 +142,14 @@ class Surface {
 		const bottom = y + glyph.bottom
 		const slantTop = italic ? 1 - 0.25 * glyph.top : 0
 		const slantBottom = italic ? 1 - 0.25 * glyph.bottom : 0
-		const rows = Math.min(this.height, this.first(bottom))
-		for (let row = Math.max(0, this.first(top)); row < rows; row++) {
-			const t = (this.center(row) - top) / (bottom - top)
+		const rows = Math.min(this.height, this.row(bottom))
+		for (let row = Math.max(0, this.row(top)); row < rows; row++) {
+			const t = (this.centerV(row) - top) / (bottom - top)
 			const slant = slantTop + t * (slantBottom - slantTop)
 			const v = Math.min(glyph.height - 1, Math.floor(t * glyph.height))
-			const columns = Math.min(this.width, this.first(right + slant))
-			for (let column = Math.max(0, this.first(left + slant)); column < columns; column++) {
-				const u = Math.min(glyph.width - 1, Math.floor(((this.center(column) - slant - left) / (right - left)) * glyph.width))
+			const columns = Math.min(this.width, this.column(right + slant))
+			for (let column = Math.max(0, this.column(left + slant)); column < columns; column++) {
+				const u = Math.min(glyph.width - 1, Math.floor(((this.centerU(column) - slant - left) / (right - left)) * glyph.width))
 				const i = (v * glyph.width + u) * 4
 				const a = (glyph.rgba[i + 3]! / 255) * tint.a
 				if (a >= ALPHA_CUTOFF) this.blend(row * this.width + column, glyph.rgba[i]! * tint.r, glyph.rgba[i + 1]! * tint.g, glyph.rgba[i + 2]! * tint.b, a)
@@ -113,8 +163,9 @@ class Surface {
  * (a quarter of the color, one glyph shadow offset down and right) and the text, each followed by its underlines and strikethroughs.
  */
 export function rasterizeTextDisplay(layout: TextLayout): Raster {
-	const scale = chooseTexelsPerPixel(layout)
-	const surface = new Surface((layout.width + 1) * scale, (layout.height + 1) * scale, scale)
+	const bounds = drawnBounds(layout)
+	const scale = chooseTexelsPerPixel(layout, bounds)
+	const surface = new Surface(bounds, scale)
 
 	const argb = layout.background | 0
 	if (argb !== 0) {
@@ -150,15 +201,46 @@ export function rasterizeTextDisplay(layout: TextLayout): Raster {
 			for (const [x0, y0, x1, y1, tint] of effects) surface.fillRect(x0, y0, x1, y1, tint)
 		}
 	}
-	return { width: surface.width, height: surface.height, texelsPerPixel: scale, data: surface.data }
+	return crop(surface, layout)
+}
+
+/**
+ * Glyph quads cover their whole cell, transparent columns too, so the drawing is cut down to the background's rectangle
+ * and every texel drawn outside it, in whole font pixels.
+ */
+function crop(surface: Surface, layout: TextLayout): Raster {
+	const { scale, bounds, width, data } = surface
+	let x0 = (-1 - bounds.left) * scale
+	let y0 = (-1 - bounds.top) * scale
+	let x1 = (layout.width - bounds.left) * scale
+	let y1 = (layout.height - bounds.top) * scale
+	for (let row = 0; row < surface.height; row++) {
+		for (let column = 0; column < width; column++) {
+			if (data[(row * width + column) * 4 + 3] === 0) continue
+			x0 = Math.min(x0, column)
+			y0 = Math.min(y0, row)
+			x1 = Math.max(x1, column + 1)
+			y1 = Math.max(y1, row + 1)
+		}
+	}
+	x0 = Math.floor(x0 / scale) * scale
+	y0 = Math.floor(y0 / scale) * scale
+	x1 = Math.ceil(x1 / scale) * scale
+	y1 = Math.ceil(y1 / scale) * scale
+	const cropped = new Uint8ClampedArray((x1 - x0) * (y1 - y0) * 4)
+	for (let row = y0; row < y1; row++) cropped.set(data.subarray((row * width + x0) * 4, (row * width + x1) * 4), (row - y0) * (x1 - x0) * 4)
+	return { width: x1 - x0, height: y1 - y0, texelsPerPixel: scale, left: bounds.left + x0 / scale, top: bounds.top + y0 / scale, data: cropped }
 }
 
 export interface DrawnTextDisplay {
 	canvas: HTMLCanvasElement
 	texelsPerPixel: number
-	/** Canvas size in texels; the canvas covers u from -1 to layout.width and v from -1 to layout.height. */
+	/** Canvas size in texels. */
 	width: number
 	height: number
+	/** Font pixels (u, v) at the top left corner of the canvas. */
+	left: number
+	top: number
 }
 
 export function drawTextDisplay(layout: TextLayout, makeCanvas: (width: number, height: number) => HTMLCanvasElement): DrawnTextDisplay {
@@ -169,5 +251,5 @@ export function drawTextDisplay(layout: TextLayout, makeCanvas: (width: number, 
 	const image = context.createImageData(raster.width, raster.height)
 	image.data.set(raster.data)
 	context.putImageData(image, 0, 0)
-	return { canvas, texelsPerPixel: raster.texelsPerPixel, width: raster.width, height: raster.height }
+	return { canvas, texelsPerPixel: raster.texelsPerPixel, width: raster.width, height: raster.height, left: raster.left, top: raster.top }
 }

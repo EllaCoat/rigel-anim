@@ -9,7 +9,8 @@ let library: FontLibrary
 
 beforeAll(async () => {
 	// X: a pixel at the top left and one in the second column of the last row (3 wide); Y sits 3 pixels lower (ascent 4);
-	// H is a 32 pixel high cell shown 8 high, with a pixel at its column 15.
+	// T is Y at twice the size, starting 3 pixels above the line (height 16, ascent 10); H is a 32 pixel high cell shown
+	// 8 high, with a pixel at its column 15; U+F801 steps back 3.
 	const hd = Array.from({ length: 32 }, (_, y) => (y === 0 ? `${'.'.repeat(15)}#${'.'.repeat(16)}` : '.'.repeat(32)))
 	library = await loadGame({
 		...vanilla(),
@@ -19,7 +20,9 @@ beforeAll(async () => {
 					providers: [
 						{ type: 'bitmap', file: 'minecraft:font/x.png', ascent: 7, chars: ['X'] },
 						{ type: 'bitmap', file: 'minecraft:font/y.png', ascent: 4, chars: ['Y'] },
+						{ type: 'bitmap', file: 'minecraft:font/y.png', height: 16, ascent: 10, chars: ['T'] },
 						{ type: 'bitmap', file: 'minecraft:font/hd.png', ascent: 7, chars: ['H'] },
+						{ type: 'space', advances: { '': -3 } },
 					],
 				}),
 				'minecraft/textures/font/x.png': image('#...', '....', '....', '....', '....', '....', '....', '.#..'),
@@ -45,9 +48,23 @@ describe('size', () => {
 	test('the canvas covers u from -1 to the width and v from -1 to the height', () => {
 		const one = raster('X')
 		// width 3, one line: 4 x 11 font pixels at 2 texels per pixel
-		expect([one.texelsPerPixel, one.width, one.height]).toEqual([2, 8, 22])
+		expect([one.texelsPerPixel, one.width, one.height, one.left, one.top]).toEqual([2, 8, 22, -1, -1])
 		const two = raster(json({ text: 'X\nX' }))
 		expect([two.width, two.height]).toEqual([8, 42])
+	})
+
+	// DisplayRenderer draws the glyphs over the background quad without clipping them to it.
+	test('a glyph above the line grows the canvas upwards', () => {
+		const result = raster('T')
+		expect([result.left, result.top]).toEqual([-1, -3])
+		// the pixel is 2 x 2 font pixels at u = 0, v = -3; the advance is 3
+		expect(rows(result)).toEqual(picture(8, 26, { 0: '..####..', 1: '..####..', 2: '..####..', 3: '..####..' }))
+	})
+
+	test('a glyph stepped back past the start grows the canvas to the left', () => {
+		const result = raster('X')
+		expect([result.left, result.top]).toEqual([-3, -1])
+		expect(rows(result)).toEqual(picture(6, 22, { 2: '##....', 3: '##....', 16: '..##..', 17: '..##..' }))
 	})
 
 	test('half pixels need 2 texels per pixel, italics 4, and a high-resolution bitmap enough for its texels', () => {
@@ -160,8 +177,8 @@ describe('shadow', () => {
 
 	test('lines have a shadow one pixel down and right whatever the glyph', () => {
 		const result = raster(json({ text: 'X', underlined: true }), { shadow: true })
-		expect(rows(result)[18]).toBe('########')
-		expect(rows(result)[20]).toBe('..######')
+		expect(rows(result)[18]).toBe('########..')
+		expect(rows(result)[20]).toBe('..########')
 		expect(pixel(result, 3, 20)).toEqual([64, 64, 64, 255])
 	})
 })
@@ -214,10 +231,13 @@ describe('background', () => {
 		expect(pixel(raster('X', { background: 0x1affffff }), 0, 0)).toEqual([255, 255, 255, 26])
 	})
 
-	test('what reaches beyond the background, like the shadow of an underline, is cut at its edge', () => {
+	test('what reaches beyond the background, like the shadow of an underline, is drawn past its edge', () => {
 		const result = raster(json({ text: 'X', underlined: true }), { shadow: true, background: 0xff000000 })
-		expect([result.width, result.height]).toEqual([8, 22])
-		expect(pixel(result, result.width - 1, result.height - 1)).toEqual([64, 64, 64, 255])
+		// the background covers columns 0 to 7; the shadow of the underline reaches u = 4, column 9
+		expect([result.width, result.height]).toEqual([10, 22])
+		expect(pixel(result, 9, 21)).toEqual([64, 64, 64, 255])
+		expect(pixel(result, 9, 0)).toEqual([0, 0, 0, 0])
+		expect(pixel(result, 7, 0)).toEqual([0, 0, 0, 255])
 	})
 })
 
@@ -241,7 +261,7 @@ describe('canvas', () => {
 		const text = layoutTextDisplay(library, spec('X', { background: 0xff2040ff }))
 		const drawn = drawTextDisplay(text, makeCanvas)
 		expect(requested).toEqual([[8, 22]])
-		expect([drawn.texelsPerPixel, drawn.width, drawn.height]).toEqual([2, 8, 22])
+		expect([drawn.texelsPerPixel, drawn.width, drawn.height, drawn.left, drawn.top]).toEqual([2, 8, 22, -1, -1])
 		expect(written?.data).toEqual(rasterizeTextDisplay(text).data)
 	})
 })

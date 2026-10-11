@@ -328,7 +328,7 @@ export function registerVariantPanel(): void {
 		growable: true,
 		resizable: true,
 		expand_button: true,
-		condition: { formats: [FORMAT_ID], modes: ['edit', 'paint', 'animate'] },
+		condition: { formats: [FORMAT_ID], modes: ['edit', 'animate'] },
 		default_position: { slot: 'right_bar', float_position: [0, 0], float_size: [340, 480], height: 360, folded: false, sidebar_index: 10 },
 		component: {
 			name: 'panel-rigel-variants',

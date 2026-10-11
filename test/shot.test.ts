@@ -50,6 +50,57 @@ describe('poses', () => {
 	test('an animation the model does not have is reported', () => {
 		expect(() => poseCommands(spec, [], spec.views[1]!)).toThrow('the model has no animation "walk"')
 	})
+
+	test('a played pose steps a frozen server to the tick, and a pause holds, restarts and steps on', () => {
+		const played = parseSpec({
+			origin: [0, 0, 0],
+			rig: 'axia',
+			model: 'rig.bbmodel',
+			views: [
+				{ ...view, name: 'played', pose: { animation: 'idle', tick: 12, play: true } },
+				{ ...view, name: 'held', pose: { animation: 'idle', tick: 12, play: true, pause: { at: 12, hold: 5 } } },
+				{ ...view, name: 'resumed', pose: { animation: 'idle', tick: 15, play: true, pause: { at: 12, hold: 5 } } },
+			],
+		})
+		const start = ['tick freeze', 'function rigel:axia/stop', 'function rigel:axia/play {ID:0}']
+		const settle = ['scoreboard players set $Rigel.axia Rigel.Playing 0', 'tick step 1']
+		const caughtUp = [...settle, 'scoreboard players set $Rigel.axia Rigel.Playing 1']
+		expect(poseCommands(played, animations, played.views[0]!)).toEqual([...start, 'tick step 13', ...settle])
+		expect(poseCommands(played, animations, played.views[1]!)).toEqual([...start, 'tick step 13', ...caughtUp, 'function rigel:axia/pause', 'tick step 5', ...settle])
+		expect(poseCommands(played, animations, played.views[2]!)).toEqual([...start, 'tick step 13', ...caughtUp, 'function rigel:axia/pause', 'tick step 5', 'function rigel:axia/restart', 'function rigel:axia/tick', 'tick step 2', ...settle])
+	})
+
+	test('with a played view in the spec, the other views unfreeze the server and stop first', () => {
+		const mixed = parseSpec({ ...spec, views: [...spec.views, { ...view, name: 'played', pose: { animation: 'walk', tick: 1, play: true } }] })
+		const thaw = ['tick unfreeze', 'function rigel:axia/stop']
+		expect(poseCommands(mixed, animations, mixed.views[0]!)).toEqual([...thaw, 'function rigel:axia/rest'])
+		expect(poseCommands(mixed, animations, mixed.views[1]!)).toEqual([...thaw, frame(0), frame(1), frame(2)])
+		expect(poseCommands(mixed, animations, mixed.views[3]!)[0]).toBe('tick freeze')
+	})
+
+	test('a restart one frame before the tick writes that frame without a step', () => {
+		const next = parseSpec({ ...spec, views: [{ ...view, name: 'next', pose: { animation: 'idle', tick: 13, play: true, pause: { at: 12, hold: 0 } } }] })
+		expect(poseCommands(next, animations, next.views[0]!).slice(-5)).toEqual([
+			'function rigel:axia/pause',
+			'function rigel:axia/restart',
+			'function rigel:axia/tick',
+			'scoreboard players set $Rigel.axia Rigel.Playing 0',
+			'tick step 1',
+		])
+	})
+
+	test('a pause past the last frame pauses there', () => {
+		const late = parseSpec({ ...spec, views: [{ ...view, name: 'late', pose: { animation: 'walk', tick: 99, play: true, pause: { at: 50, hold: 2 } } }] })
+		expect(poseCommands(late, animations, late.views[0]!).slice(3)).toEqual(['tick step 4', 'scoreboard players set $Rigel.axia Rigel.Playing 0', 'tick step 1', 'scoreboard players set $Rigel.axia Rigel.Playing 1', 'function rigel:axia/pause', 'tick step 2', 'scoreboard players set $Rigel.axia Rigel.Playing 0', 'tick step 1'])
+	})
+
+	test.each([
+		[{ animation: 'idle', tick: 2, pause: { at: 1, hold: 1 } }],
+		[{ animation: 'idle', tick: 2, play: true, pause: { at: 3, hold: 1 } }],
+		[{ animation: 'idle', tick: 2, play: 'yes' }],
+	])('rejects the pose %j', (pose) => {
+		expect(() => parseSpec({ origin: [0, 0, 0], rig: 'axia', model: 'rig.bbmodel', views: [{ ...view, pose }] })).toThrow('views[0].pose.p')
+	})
 })
 
 describe('cameras', () => {

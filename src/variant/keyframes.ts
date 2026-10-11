@@ -55,13 +55,22 @@ export function placeVariantKeyframe(variant: string): void {
 	if (!animation) return
 	const effects = effectsOf(animation) ?? ((animation.animators as unknown as Record<string, unknown>).effects = new EffectAnimator(animation)) as unknown as Effects
 	effects.addToTimeline()
-	const time = Math.min(Math.round(Timeline.time * TICKS_PER_SECOND) / TICKS_PER_SECOND, animation.length)
-	Timeline.setTime(time)
-	const there = (effects.variant ?? []).find((kf) => Math.round(kf.time * TICKS_PER_SECOND) === Math.round(time * TICKS_PER_SECOND))
-	if (there) {
-		const changing = notShowing([there], variant)
+	const tick = Math.round(Timeline.time * TICKS_PER_SECOND)
+	const time = Timeline.time <= animation.length ? Math.min(tick / TICKS_PER_SECOND, animation.length) : tick / TICKS_PER_SECOND
+	const there = (effects.variant ?? []).filter((kf) => Math.round(kf.time * TICKS_PER_SECOND) === Math.round(time * TICKS_PER_SECOND))
+	if (there.length > 0) {
+		const changing = notShowing(there, variant)
 		if (changing.length > 0) setKeyframeVariants(changing, variant)
-	} else effects.createKeyframe({ variant }, time, VARIANT_CHANNEL, true, false)
+	} else {
+		const keyframes: BBKeyframe[] = []
+		Undo.initEdit({ keyframes })
+		const keyframe = effects.createKeyframe({ variant }, time, VARIANT_CHANNEL, false, false)
+		keyframe.time = time
+		keyframes.push(keyframe)
+		animation.setLength()
+		Undo.finishEdit('Add variant keyframe')
+	}
+	Timeline.setTime(time)
 	Animator.preview()
 }
 

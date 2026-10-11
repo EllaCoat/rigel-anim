@@ -11,7 +11,7 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { dispatch, type LoadForm, loadStep, pipelines, reloadPack, respawn, rootSearch, storageFill, WARM_FILLS, warmFill, warmPlayback, writeForms } from './experiments'
 import { e1WriteCost, type Experiment, writePack } from './gen'
-import { javaPath, SERVER_DIR, Server, setup, WORLD } from './mc'
+import { heapUsedKiB, javaPath, SERVER_DIR, Server, setup, WORLD } from './mc'
 import { startRecording, stopRecording, summarize } from './profile'
 import { TARGET } from './target'
 
@@ -134,14 +134,6 @@ const SPRINTED: Record<string, () => Case[]> = {
 	warm: () => [{ label: '3 × 250 bones', experiment: warmPlayback(RIG.rigs, RIG.bones), units: RIG.rigs * RIG.bones, unit: 'cell' }],
 }
 
-function heapUsedKiB(pid: number): number {
-	const jcmd = join(dirname(javaPath()), 'jcmd.exe')
-	for (let i = 0; i < 2; i++) spawnSync(jcmd, [String(pid), 'GC.run'])
-	const out = spawnSync(jcmd, [String(pid), 'GC.heap_info'], { encoding: 'utf8' }).stdout
-	const used = out.match(/used (\d+)K/)
-	if (!used) throw new Error(`could not read heap usage:\n${out}`)
-	return Number(used[1])
-}
 
 // E5: heap kept per cell of each layout, measured after the setup's literal is already loaded so only
 // the storage copy is counted.

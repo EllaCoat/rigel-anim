@@ -1,9 +1,13 @@
 // Runs inside the development Blockbench: mc-shot.ts bundles this file and injects it as __rigelShot.
-import { DEFAULT_VARIANT_ID, readVariants } from '../src/variant/settings'
-import { choose } from '../src/variant/view'
+import { tickCount } from '../src/bake/sample'
+import { variantKeys } from '../src/export/collect'
+import { variantCalls } from '../src/export/variant-keys'
+import { DEFAULT_VARIANT_ID } from '../src/variant/settings'
 import { blockbenchCamera, FOV, type Pose, type View } from './shot-spec'
 
 const TICKS_PER_SECOND = 20
+// The variant the client shows: what the views asked for, and then what the frames a pose calls apply.
+let current: string | undefined
 type Stackable = { stackAnimations(animations: BBAnimation[], inLoop: boolean): void }
 
 async function open(model: any, name: string) {
@@ -14,6 +18,12 @@ async function open(model: any, name: string) {
 		await project.close(true)
 	}
 	Codecs.project.load(model, { name, path: name, no_file: true } as any)
+	current = undefined
+	// The viewport follows the selected animation's variant keyframes; this harness sets the variant itself.
+	for (const animation of Project!.animations) {
+		const effects = animation.animators.effects as unknown as { muted: Record<string, boolean> } | undefined
+		if (effects) effects.muted.variant = true
+	}
 	unselectAllElements()
 	// The export includes cubes hidden in the viewport, so the comparison draws them too.
 	for (const node of [...Outliner.elements, ...Group.all]) (node as { visibility: boolean }).visibility = true
@@ -47,16 +57,30 @@ function applyPose(pose: Pose | undefined): void {
 	;(Animator as unknown as Stackable).stackAnimations([animation], false)
 }
 
+// poseCommands calls the frames from 0 to the tick, in order, and the frames apply their variants.
+function variantAfter(pose: Pose | undefined, name: string | undefined): string | undefined {
+	const animation = pose && Project!.animations.find((a) => a.name === pose.animation)
+	if (!pose || !animation) return name
+	const ticks = tickCount(animation)
+	const calls = variantCalls(animation.loop, ticks, variantKeys(animation).flatMap((k) => (k.variant === null ? [] : [{ time: k.time, variant: k.variant }])))
+	for (const [frame, variant] of [...calls].sort((a, b) => a[0] - b[0])) if (frame <= Math.min(pose.tick, ticks)) name = variant === DEFAULT_VARIANT_ID ? undefined : variant
+	return name
+}
+
+// Picks the variant in the plugin's own panel: the plugin keeps what the viewport shows in its own bundle.
 function applyVariant(name: string | undefined): void {
-	const variant = name === undefined ? undefined : readVariants(Project!).find((v) => v.name === name)
-	if (name !== undefined && !variant) throw new Error(`no variant "${name}"`)
-	choose(variant?.uuid ?? DEFAULT_VARIANT_ID)
+	const rows = [...document.querySelectorAll<HTMLElement>('#panel_rigel_variants .rv-list li')]
+	const row = rows.find((li) => li.querySelector('.rv-name')?.textContent === (name ?? DEFAULT_VARIANT_ID))
+	if (!row) throw new Error(`no variant "${name}" in the Variants panel`)
+	row.click()
 }
 
 // Draws only the model (no grid, gizmos or background) into a transparent image of the given size.
 function render(view: View, width: number, height: number): string {
 	applyPose(view.pose)
-	applyVariant(view.variant)
+	if (view.variant !== undefined) current = view.variant === DEFAULT_VARIANT_ID ? undefined : view.variant
+	current = variantAfter(view.pose, current)
+	applyVariant(current)
 	const renderer = Preview.selected!.renderer
 	const camera = new THREE.PerspectiveCamera(FOV, width / height, 0.5, 30000)
 	const { position, target } = blockbenchCamera(view)

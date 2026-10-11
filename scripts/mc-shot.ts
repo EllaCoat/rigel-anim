@@ -120,12 +120,10 @@ async function drawInBlockbench(spec: Spec & { model: string }, specDir: string,
 		await evaluate(`return await __rigelShot.open(${JSON.stringify(model)}, ${JSON.stringify(basename(modelPath))})`)
 
 		const files: string[] = []
-		let variant: string | undefined
 		for (const [i, view] of spec.views.entries()) {
 			const minecraft = readFileSync(shots[i]!)
 			const { width, height } = pngSize(minecraft)
-			if (view.variant !== undefined) variant = view.variant === 'default' ? undefined : view.variant
-			const blockbench: string = await evaluate(`return __rigelShot.render(${JSON.stringify({ ...view, variant })}, ${width}, ${height})`)
+			const blockbench: string = await evaluate(`return __rigelShot.render(${JSON.stringify(view)}, ${width}, ${height})`)
 			writeDataUrl(join(out, `${view.name}-bb.png`), blockbench)
 			const compare: string = await evaluate(`return await __rigelShot.compose(${JSON.stringify(dataUrl(minecraft))}, ${JSON.stringify(blockbench)})`)
 			const file = join(out, `${view.name}-compare.png`)

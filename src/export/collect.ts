@@ -59,7 +59,7 @@ function variantSources(groups: Group[], textures: Texture[]): VariantSource[] {
 	}))
 }
 
-function variantKeys(animation: BBAnimation): VariantKey[] {
+export function variantKeys(animation: BBAnimation): VariantKey[] {
 	const variants = readVariants(Project!)
 	return variantKeyframes(animation).map((kf) => {
 		const id = keyframeVariant(kf)

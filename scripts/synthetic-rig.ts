@@ -1,8 +1,10 @@
 // A small rig whose animations cover what baking has to handle: catmullrom, bezier, step and linear
 // keyframes; shear (children turning under unevenly scaled parents, with and without two equal scale
 // axes); zero scale; mirroring; a bone without cubes; a 'once' animation whose length is not a
-// whole number of ticks; eased segments, overshooting ones included; a variant; locators with and
-// without an entity; and the three displays. Each face direction has its own colour, so a mirrored
+// whole number of ticks; eased segments, overshooting ones included; two variants, one of them
+// on two bones only, and variant keyframes in each kind of animation (on the last tick of a loop and
+// of a hold, twice on one tick, and on the last tick of a 'once'); locators with and without an
+// entity; and the three displays. Each face direction has its own colour, so a mirrored
 // or turned export shows in screenshots.
 import { deflateSync } from 'node:zlib'
 
@@ -91,6 +93,9 @@ function key(channel: string, time: number, [x, y, z]: V, interpolation = 'linea
 	return { channel, data_points: [{ x, y, z }], uuid: id(), time, color: -1, interpolation, ...extra }
 }
 
+// A keyframe of the variant track; 'default' is the original model.
+const variantKey = (time: number, variant: string) => ({ channel: 'variant', data_points: [{ variant }], uuid: id(), time, color: -1, interpolation: 'linear' })
+
 const eased = (family: string, mode: string) => ({ rigel_easing: { name: `${family} ${mode}`, curve: { type: 'function', family, mode } } })
 
 function bezier(time: number, value: V, left: V, right: V) {
@@ -141,7 +146,7 @@ export function syntheticRig() {
 	const ice = display('ice', [-8, 0, -28], { kind: 'block', block: 'minecraft:oak_stairs[facing=east,half=top]' })
 	const body = group('body', [0, 8, 0], [[-3, 4, -2], [3, 12, 2]], [arm, tail, pivot, label, note, ice])
 
-	const animation = (name: string, loop: string, length: number, animators: Record<string, object[]>, bones: Record<string, { uuid: string }>) => ({
+	const animation = (name: string, loop: string, length: number, animators: Record<string, object[]>, bones: Record<string, { uuid: string }>, variantKeys: object[] = []) => ({
 		uuid: id(),
 		name,
 		loop,
@@ -153,11 +158,16 @@ export function syntheticRig() {
 		blend_weight: '',
 		start_delay: '',
 		loop_delay: '',
-		animators: Object.fromEntries(Object.entries(animators).map(([bone, keyframes]) => [bones[bone]!.uuid, { name: bone, type: 'bone', keyframes }])),
+		animators: {
+			...Object.fromEntries(Object.entries(animators).map(([bone, keyframes]) => [bones[bone]!.uuid, { name: bone, type: 'bone', keyframes }])),
+			...(variantKeys.length > 0 ? { effects: { name: 'effects', type: 'effect', keyframes: variantKeys } } : {}),
+		},
 	})
 	const bones = { body, arm, hand, tail, tailtip, pivot, gem, ice }
 	const palette = { name: 'palette.png', id: '0', uuid: id(), width: 16, height: 16, uv_width: 16, uv_height: 16, source: paletteDataUrl() }
 	const paletteAlt = { name: 'palette_alt.png', id: '1', uuid: id(), width: 16, height: 16, uv_width: 16, uv_height: 16, source: paletteDataUrl(true) }
+	const alt = id()
+	const tip = id()
 
 	return {
 		meta: { format_version: '5.0', model_format: 'rigel', box_uv: false },
@@ -166,26 +176,29 @@ export function syntheticRig() {
 		elements,
 		outliner: [body],
 		textures: [palette, paletteAlt],
-		// The tail keeps its look: an excluded bone.
-		rigel_variants: [{ name: 'alt', textures: [[palette.uuid, paletteAlt.uuid]], excluded: [tail.uuid], onApply: 'check:applied' }],
+		// alt leaves the tail as it is; tip changes only the hand and the gem.
+		rigel_variants: [
+			{ uuid: alt, name: 'alt', textures: [[palette.uuid, paletteAlt.uuid]], excluded: [tail.uuid], onApply: 'check:applied' },
+			{ uuid: tip, name: 'tip', textures: [[palette.uuid, paletteAlt.uuid]], excluded: [body.uuid, arm.uuid, tail.uuid, tailtip.uuid, pivot.uuid], onApply: '' },
+		],
 		animations: [
 			animation('curves', 'loop', 1.5, {
 				body: [key('rotation', 0, [0, 0, 0], 'catmullrom'), key('rotation', 0.5, [10, 60, 0], 'catmullrom'), key('rotation', 1, [0, 120, 20], 'catmullrom'), key('rotation', 1.5, [0, 0, 0], 'catmullrom')],
 				arm: [bezier(0, [0, 0, 0], [0, 0, 0], [0, 0, -40]), bezier(0.75, [0, 0, -80], [0, 0, -20], [0, 0, 20]), bezier(1.5, [0, 0, 0], [0, 0, -40], [0, 0, 0])],
 				hand: [key('position', 0, [0, 0, 0], 'step'), key('position', 0.5, [0, 2, 0], 'step'), key('position', 1, [1, 0, 0], 'step')],
 				pivot: [key('rotation', 0, [0, 0, 0]), key('rotation', 1.5, [0, 360, 0])],
-			}, bones),
+			}, bones, [variantKey(0, alt), variantKey(0.5, tip), variantKey(1, 'default')]),
 			animation('squash', 'loop', 1, {
 				body: [key('scale', 0, [1, 1, 1]), key('scale', 0.5, [1.5, 0.7, 1.5]), key('scale', 1, [1, 1, 1])],
 				arm: [key('rotation', 0, [0, 0, 0]), key('rotation', 1, [90, 45, 0])],
 				tail: [key('scale', 0, [2, 1.5, 1]), key('scale', 1, [2, 1.5, 1])],
 				tailtip: [key('rotation', 0, [0, 0, 0]), key('rotation', 1, [30, 60, 90])],
 				ice: [key('scale', 0, [1, 1, 1]), key('scale', 0.5, [0.25, 0.25, 0.25]), key('scale', 1, [1, 1, 1])],
-			}, bones),
+			}, bones, [variantKey(0.5, alt), variantKey(1, 'default')]),
 			animation('hide', 'hold', 1, {
 				tail: [key('scale', 0, [1, 1, 1]), key('scale', 0.5, [0, 0, 0]), key('scale', 1, [1, 1, 1])],
 				arm: [key('scale', 0, [1, 1, 1]), key('scale', 1, [-1, 1, 1])],
-			}, bones),
+			}, bones, [variantKey(0.25, alt), variantKey(0.5, tip), variantKey(0.52, 'default'), variantKey(1, alt)]),
 			animation('eased', 'loop', 2, {
 				body: [key('rotation', 0, [0, 0, 0], 'linear', eased('back', 'out')), key('rotation', 1, [0, 90, 0], 'linear', eased('elastic', 'inOut')), key('rotation', 2, [0, 0, 0])],
 				arm: [key('rotation', 0, [0, 0, 0], 'catmullrom', eased('sine', 'inOut')), key('rotation', 0.7, [0, 0, -70], 'catmullrom', eased('back', 'in')), key('rotation', 1.4, [30, 0, -20], 'catmullrom'), key('rotation', 2, [0, 0, 0], 'catmullrom')],
@@ -195,7 +208,7 @@ export function syntheticRig() {
 			animation('once', 'once', 1.03, {
 				body: [key('position', 0, [0, 0, 0]), key('position', 1.03, [0, 0, 8])],
 				hand: [key('rotation', 0, [0, 0, 0], 'catmullrom'), key('rotation', 0.5, [45, 0, 0], 'catmullrom'), key('rotation', 1.03, [0, 0, 0], 'catmullrom')],
-			}, bones),
+			}, bones, [variantKey(0.5, tip), variantKey(1.03, alt)]),
 		],
 	}
 }

@@ -101,6 +101,17 @@ describe('runEnds', () => {
 		expect(runEnds(hiding, tolerance, 20)).toEqual({ ends: [0, 1, 2, 3, 9, 10, 11, 12, 13, 30], snaps: [10, 11, 12, 13] })
 	})
 
+	// The client draws the shrinking run partway too: the three runs after it stay one tick and are shown at once.
+	test('a bone that shrinks away over a run keeps one-tick runs after it', () => {
+		// Unturned, so that the vanished matrix splits into the same rotation and the shrinking is one run.
+		const q = axisAngle([0, 0, 1], 0)
+		const shrinking = track(31, (f) => {
+			const s = f <= 8 ? 1 : f >= 10 ? 0 : (10 - f) / 2
+			return values([1 + f * 0.1, 0, 0], q, [s, s, s])
+		})
+		expect(runEnds(shrinking, tolerance, 20)).toEqual({ ends: [0, 1, 2, 3, 8, 10, 11, 12, 13, 30], snaps: [11, 12, 13] })
+	})
+
 	// The run at 10 is cut short: starting three ticks back, the client would be further behind than three of its
 	// ticks. The runs after it are cut only where a slerp would turn the short way round (past 180°).
 	test('runs after one-tick runs in fast motion still span several ticks, and none is shown at once', () => {

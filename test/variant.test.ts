@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { variantCalls, variantCuts } from '../src/export/variant-keys'
+import { notShowing } from '../src/variant/keyframes'
 import { variantAt } from '../src/variant/keys'
 import { DEFAULT_VARIANT_ID, freeName, newVariant, readVariants, writeVariants, type StoredVariant } from '../src/variant/settings'
 
@@ -103,5 +104,16 @@ describe('variant at a time', () => {
 
 	test('keyframes at one time give the later in the list', () => {
 		expect(variantAt([{ time: 1, variant: 'x' }, { time: 1, variant: 'y' }], 1)).toBe('y')
+	})
+})
+
+describe('keyframes that change', () => {
+	const keyframe = (variant?: string) => ({ data_points: [{ variant }] }) as unknown as BBKeyframe
+
+	test('a keyframe that already shows the variant is left out, so that setting it adds no undo step', () => {
+		const [a, b, none] = [keyframe('x'), keyframe('y'), keyframe(undefined)]
+		expect(notShowing([a!, b!], 'x')).toEqual([b!])
+		expect(notShowing([a!], 'x')).toEqual([])
+		expect(notShowing([none!], 'default')).toEqual([])
 	})
 })

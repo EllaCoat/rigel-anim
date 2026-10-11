@@ -32,6 +32,11 @@ export function keyframeVariantNow(animation: BBAnimation): string | undefined {
 	return variantAt(variantKeyframes(animation).map((kf) => ({ time: kf.time, variant: keyframeVariant(kf) })), animation.time)
 }
 
+// The keyframes that do not show the variant yet.
+export function notShowing(keyframes: BBKeyframe[], variant: string): BBKeyframe[] {
+	return keyframes.filter((kf) => keyframeVariant(kf) !== variant)
+}
+
 export function selectedVariantKeyframes(): BBKeyframe[] {
 	return Modes.animate ? Timeline.selected.filter((kf) => kf.channel === VARIANT_CHANNEL) : []
 }
@@ -53,8 +58,10 @@ export function placeVariantKeyframe(variant: string): void {
 	effects.addToTimeline()
 	const time = Timeline.snapTime(Timeline.time)
 	const there = (effects.variant ?? []).find((kf) => Math.abs(kf.time - time) <= Timeline.getStep() / 2)
-	if (there) setKeyframeVariants([there], variant)
-	else effects.createKeyframe({ variant }, time, VARIANT_CHANNEL, true, false)
+	if (there) {
+		const changing = notShowing([there], variant)
+		if (changing.length > 0) setKeyframeVariants(changing, variant)
+	} else effects.createKeyframe({ variant }, time, VARIANT_CHANNEL, true, false)
 	Animator.preview()
 }
 

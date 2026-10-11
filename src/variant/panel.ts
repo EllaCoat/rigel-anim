@@ -2,7 +2,7 @@ import { readDisplay } from '../display/settings'
 import { isRigelProject } from '../easing/keyframes'
 import { variantNameProblem } from '../export/build'
 import { FORMAT_ID } from '../format'
-import { keyframeVariant, placeVariantKeyframe, selectedVariantKeyframes, setKeyframeVariants, variantKeyframes } from './keyframes'
+import { keyframeVariant, notShowing, placeVariantKeyframe, selectedVariantKeyframes, setKeyframeVariants, variantKeyframes } from './keyframes'
 import { DEFAULT_VARIANT_ID, freeName, newVariant, readVariants, writeVariants, type StoredVariant } from './settings'
 import { allBones, boneRows, boneTree, checkOf, onlyUnder, setApplied, type BoneNode, type Check, type GroupSource } from './tree'
 import { vue } from './vue'
@@ -148,7 +148,7 @@ function editCurrent(label: string, change: (variant: StoredVariant) => void): v
 
 // A row of the list: sets the variant of the keyframes selected in the timeline, and shows the variant.
 function pick(id: string): void {
-	const keyframes = selectedVariantKeyframes().filter((kf) => keyframeVariant(kf) !== id)
+	const keyframes = notShowing(selectedVariantKeyframes(), id)
 	if (keyframes.length > 0) setKeyframeVariants(keyframes, id)
 	choose(id)
 }

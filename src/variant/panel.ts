@@ -2,14 +2,16 @@ import { readDisplay } from '../display/settings'
 import { isRigelProject } from '../easing/keyframes'
 import { variantNameProblem } from '../export/build'
 import { FORMAT_ID } from '../format'
+import { keyframeVariant, placeVariantKeyframe, selectedVariantKeyframes, setKeyframeVariants, variantKeyframes } from './keyframes'
 import { DEFAULT_VARIANT_ID, freeName, newVariant, readVariants, writeVariants, type StoredVariant } from './settings'
 import { allBones, boneRows, boneTree, checkOf, onlyUnder, setApplied, type BoneNode, type Check, type GroupSource } from './tree'
+import { vue } from './vue'
 import { choose, chosenId, refreshView, shownId } from './view'
 
 const PANEL_ID = 'rigel_variants'
 const CHECK_ICON: Record<Check, string> = { all: 'check_box', some: 'indeterminate_check_box', none: 'check_box_outline_blank' }
 
-const ui = (globalThis as unknown as { Vue: { observable<T extends object>(object: T): T } }).Vue.observable({ rev: 0 })
+const ui = vue.observable({ rev: 0 })
 // Groups folded in the Bone tree.
 const folded = new Set<string>()
 
@@ -61,6 +63,13 @@ interface BoneLine {
 	open: boolean
 }
 
+interface KeyLine {
+	uuid: string
+	time: string
+	name: string
+	selected: boolean
+}
+
 interface Current {
 	name: string
 	problem: string
@@ -73,6 +82,19 @@ interface PanelModel {
 	rows: Row[]
 	current?: Current
 	textures: { uuid: string; name: string }[]
+	// The variant keyframes of the animation, in the animation view.
+	keys?: KeyLine[]
+	// Whether a variant keyframe is selected in the timeline, which the rows then set.
+	keySelected: boolean
+}
+
+function keyLines(variants: StoredVariant[]): KeyLine[] | undefined {
+	const animation = Modes.animate && BBAnimation.selected
+	if (!animation) return undefined
+	return variantKeyframes(animation).map((kf) => {
+		const id = keyframeVariant(kf)
+		return { uuid: kf.uuid, time: `${kf.time.toFixed(2)} s`, name: id === DEFAULT_VARIANT_ID ? id : (variants.find((v) => v.uuid === id)?.name ?? '(削除済み)'), selected: kf.selected }
+	})
 }
 
 function currentModel(): PanelModel {
@@ -83,7 +105,7 @@ function currentModel(): PanelModel {
 		{ id: DEFAULT_VARIANT_ID, name: DEFAULT_VARIANT_ID, selected: !current, shown: shown === DEFAULT_VARIANT_ID },
 		...variants.map((v) => ({ id: v.uuid, name: v.name || '(名前なし)', selected: v === current, shown: v.uuid === shown })),
 	]
-	const model: PanelModel = { rows, textures: Texture.all.map((t) => ({ uuid: t.uuid, name: t.name })) }
+	const model: PanelModel = { rows, textures: Texture.all.map((t) => ({ uuid: t.uuid, name: t.name })), keys: keyLines(variants), keySelected: selectedVariantKeyframes().length > 0 }
 	if (current) {
 		const excluded = new Set(current.excluded)
 		model.current = {
@@ -122,6 +144,22 @@ function editCurrent(label: string, change: (variant: StoredVariant) => void): v
 		const variant = variants.find((v) => v.uuid === id)
 		if (variant) change(variant)
 	})
+}
+
+// A row of the list: sets the variant of the keyframes selected in the timeline, and shows the variant.
+function pick(id: string): void {
+	const keyframes = selectedVariantKeyframes()
+	if (keyframes.length > 0) setKeyframeVariants(keyframes, id)
+	choose(id)
+}
+
+function placeKey(): void {
+	placeVariantKeyframe(chosenId())
+}
+
+function selectKey(uuid: string): void {
+	const keyframe = BBAnimation.selected && variantKeyframes(BBAnimation.selected).find((kf) => kf.uuid === uuid)
+	keyframe?.select().callPlayhead()
 }
 
 function add(): void {
@@ -217,6 +255,10 @@ const CSS = `
 .rigel-variants .rv-pair select { flex: 1; min-width: 0; }
 .rigel-variants .rv-problem { color: var(--color-error); }
 .rigel-variants .rv-note { margin: 0; color: var(--color-subtle_text); }
+.rigel-variants .rv-keys { max-height: 140px; overflow-y: auto; }
+.rigel-variants .rv-keys li { display: flex; justify-content: space-between; padding: 1px 8px; cursor: pointer; }
+.rigel-variants .rv-keys li:hover { background: var(--color-button); }
+.rigel-variants .rv-keys li.selected { background: var(--color-selected); color: var(--color-light); }
 .rigel-variants .rv-tree { max-height: 300px; overflow-y: auto; }
 .rigel-variants .rv-bone { display: flex; align-items: center; gap: 2px; cursor: pointer; }
 .rigel-variants .rv-bone:hover { background: var(--color-button); }
@@ -233,11 +275,19 @@ const TEMPLATE = `
 		<div class="tool" :class="{ disabled: !m.current }" title="削除" @click="remove()"><i class="material-icons">delete</i></div>
 	</div>
 	<ul class="rv-list">
-		<li v-for="row in m.rows" :key="row.id" :class="{ selected: row.selected }" @click="choose(row.id)">
+		<li v-for="row in m.rows" :key="row.id" :class="{ selected: row.selected }" @click="pick(row.id)">
 			<span class="rv-name">{{ row.name }}</span>
 			<i v-if="row.shown" class="material-icons rv-eye" title="ビューポートに表示中">visibility</i>
 		</li>
 	</ul>
+	<template v-if="m.keys">
+		<div class="rv-head">この animation の keyframe</div>
+		<div class="rv-buttons"><button @click="placeKey()" title="選んでいる variant の keyframe を再生位置に置きます。そこに keyframe があれば、variant を替えます">再生位置に置く</button></div>
+		<ul class="rv-keys">
+			<li v-for="k in m.keys" :key="k.uuid" :class="{ selected: k.selected }" @click="selectKey(k.uuid)"><span>{{ k.time }}</span><span>{{ k.name }}</span></li>
+		</ul>
+		<p class="rv-note">{{ m.keySelected ? 'keyframe を選んでいるあいだは、上の一覧で variant を選ぶと、その keyframe の variant が替わります。' : m.keys.length ? 'keyframe がある animation では、再生位置の keyframe の variant を表示します。' : 'keyframe が 1 つもない animation では、上の一覧で選んだ variant を表示します。' }}</p>
+	</template>
 	<template v-if="m.current">
 		<div class="rv-field"><label>名前</label><input type="text" class="dark_bordered" :value="m.current.name" @change="rename($event.target.value)"></div>
 		<div v-if="m.current.problem" class="rv-problem">{{ m.current.problem }}</div>
@@ -284,14 +334,14 @@ export function registerVariantPanel(): void {
 				m(): PanelModel {
 					// Read for the dependency: the model comes from the project, which Vue does not watch.
 					void ui.rev
-					return isRigelProject() ? currentModel() : { rows: [], textures: [] }
+					return isRigelProject() ? currentModel() : { rows: [], textures: [], keySelected: false }
 				},
 			},
-			methods: { add, duplicate, remove, rename, setOnApply, setPair, addPair, removePair, toggleBone, applyAll, applyNone, applySelected, fold, choose, icon: (check: Check) => CHECK_ICON[check] },
+			methods: { pick, placeKey, selectKey, add, duplicate, remove, rename, setOnApply, setPair, addPair, removePair, toggleBone, applyAll, applyNone, applySelected, fold, icon: (check: Check) => CHECK_ICON[check] },
 			template: TEMPLATE,
 		} as Vue.Component,
 	})
-	listeners = ['select_project', 'select_mode', 'finished_edit', 'undo', 'redo', 'add_texture'].map((name) => Blockbench.on(name as 'undo', redraw))
+	listeners = ['select_project', 'select_mode', 'select_animation', 'update_keyframe_selection', 'finished_edit', 'undo', 'redo', 'add_texture'].map((name) => Blockbench.on(name as 'undo', redraw))
 	listeners.push(Codecs.project!.on('parsed', redraw))
 }
 

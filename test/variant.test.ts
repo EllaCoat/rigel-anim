@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { variantCalls, variantCuts } from '../src/export/variant-keys'
+import { variantAt } from '../src/variant/keys'
 import { DEFAULT_VARIANT_ID, freeName, newVariant, readVariants, writeVariants, type StoredVariant } from '../src/variant/settings'
 
 const project = (rigel_variants: unknown) => ({ rigel_variants, saved: true }) as unknown as ModelProject
@@ -77,5 +78,30 @@ describe('variant calls', () => {
 		expect(cuts(0)).toEqual([9])
 		expect(cuts(1)).toEqual([9, 19])
 		expect(cuts(2)).toEqual([])
+	})
+})
+
+describe('variant at a time', () => {
+	const keys = [{ time: 1, variant: 'b' }, { time: 0.5, variant: 'a' }, { time: 2, variant: 'c' }]
+
+	test('is the last keyframe at or before the time', () => {
+		expect(variantAt(keys, 0.5)).toBe('a')
+		expect(variantAt(keys, 0.99)).toBe('a')
+		expect(variantAt(keys, 1)).toBe('b')
+		expect(variantAt(keys, 5)).toBe('c')
+	})
+
+	test('a playhead a hair before a keyframe counts as on it', () => {
+		expect(variantAt(keys, 1 - 1e-6)).toBe('b')
+		expect(variantAt(keys, 1 - 1e-3)).toBe('a')
+	})
+
+	test('before the first keyframe it is still what the last one set, and with none there is nothing', () => {
+		expect(variantAt(keys, 0)).toBe('c')
+		expect(variantAt([], 3)).toBeUndefined()
+	})
+
+	test('keyframes at one time give the later in the list', () => {
+		expect(variantAt([{ time: 1, variant: 'x' }, { time: 1, variant: 'y' }], 1)).toBe('y')
 	})
 })

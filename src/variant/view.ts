@@ -1,4 +1,5 @@
 import { isRigelProject } from '../easing/keyframes'
+import { keyframeVariantNow, showVariantTrack } from './keyframes'
 import { DEFAULT_VARIANT_ID, readVariants, type StoredVariant } from './settings'
 
 type Material = THREE.Material
@@ -42,16 +43,32 @@ function swapMaterials({ element }: { element: Cube }): void {
 	mesh.material = Array.isArray(mesh.material) ? mesh.material.map(swap) : swap(mesh.material)
 }
 
-// Draws the chosen variant, and tells the panel to redraw itself.
+// In the animation view, an animation with variant keyframes shows the one at its playhead; everything else shows
+// the variant chosen in the panel.
+function wantedId(): string {
+	const animation = Modes.animate && BBAnimation.selected
+	return (animation && keyframeVariantNow(animation)) || chosenId()
+}
+
+function draw(): boolean {
+	if (!Project || !isRigelProject()) return false
+	const id = wantedId()
+	const next = readVariants(Project).find((v) => v.uuid === id)
+	if (JSON.stringify(shown.get(Project)) === JSON.stringify(next)) return false
+	shown.set(Project, next)
+	Canvas.updateView({ elements: Cube.all, element_aspects: { faces: true } })
+	return true
+}
+
+// Draws the variant to show, and tells the panel to redraw itself.
 export function refreshView(): void {
-	if (Project && isRigelProject()) {
-		const next = readVariants(Project).find((v) => v.uuid === chosenId())
-		if (JSON.stringify(shown.get(Project)) !== JSON.stringify(next)) {
-			shown.set(Project, next)
-			Canvas.updateView({ elements: Cube.all, element_aspects: { faces: true } })
-		}
-	}
+	draw()
 	onChange()
+}
+
+// Runs for every frame of a playing animation, so the panel is redrawn only when the variant changes.
+function followPlayhead(): void {
+	if (draw()) onChange()
 }
 
 export function registerVariantView(changed: () => void): void {
@@ -61,6 +78,9 @@ export function registerVariantView(changed: () => void): void {
 		Cube.preview_controller.on('update_faces', swapMaterials as (data: unknown) => void) as unknown as Deletable,
 		Blockbench.on('select_project', refreshView),
 		Blockbench.on('select_mode', refreshView),
+		Blockbench.on('display_animation_frame', followPlayhead),
+		...['select_animation', 'select_project', 'select_mode'].map((name) => Blockbench.on(name as 'select_mode', showVariantTrack)),
+		Codecs.project!.on('parsed', showVariantTrack),
 	]
 	refreshView()
 }

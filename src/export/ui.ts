@@ -112,6 +112,15 @@ function openExportDialog(): void {
 				step: 1,
 				condition: (form: FormResult) => !!form.thin || animations.some((_, i) => custom(i)(form)),
 			},
+			teleportDuration: {
+				label: 'tp の補間（tick）',
+				type: 'number',
+				value: current.teleportDuration,
+				min: 0,
+				max: 59,
+				step: 1,
+				description: 'リグを tp したときに、client が位置と向きを補間する tick 数（teleport_duration）です。0 だと向きはすぐ変わり、位置は 1 tick で移ります。',
+			},
 			...Object.fromEntries(
 				animations.flatMap((a, i) => {
 					const own = getAnimationTolerance(a)
@@ -138,6 +147,7 @@ function openExportDialog(): void {
 				thin: result.thin ? tolerance : undefined,
 				tolerance,
 				span: number('span', current.span),
+				teleportDuration: Number(result.teleportDuration),
 			}
 			const problems = problemsOf(settings)
 			if (problems.length > 0) {

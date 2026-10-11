@@ -137,6 +137,7 @@ export interface RigSettings {
 	thin?: Tolerance
 	// Longest run one write may cover, in ticks.
 	span: number
+	teleportDuration: number
 }
 
 export type Files = Map<string, string | Uint8Array>

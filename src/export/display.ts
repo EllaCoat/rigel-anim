@@ -66,8 +66,8 @@ export function topLevelKeys(snbt: string): string[] {
 	return keys.filter((k) => k.length > 0)
 }
 
-// Keys the summon writes itself; another value would break the rig or its selection.
-const OWN_KEYS = ['id', 'UUID', 'Tags', 'transformation', 'Passengers', 'interpolation_duration']
+// Keys Rigel writes itself; another value would break the rig or its selection.
+const OWN_KEYS = ['id', 'UUID', 'Tags', 'transformation', 'Passengers', 'interpolation_duration', 'teleport_duration']
 
 export function blockStateNbt(block: string): string | undefined {
 	const m = BLOCK_STATE.exec(normalizeId(block))

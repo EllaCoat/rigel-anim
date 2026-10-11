@@ -136,9 +136,13 @@ describe('frames', () => {
 			[0, 2],
 			[0, 1, 2],
 		]
-		expect(planFrames('hold', poses, (b) => runs[b]!)).toEqual([[w(0, 0), w(1, 0), w(2, 0)], [w(0, 2, 2), w(1, 2, 2)], []])
+		expect(planFrames('hold', poses, (b) => ({ ends: runs[b]!, snaps: [] }))).toEqual([[w(0, 0), w(1, 0), w(2, 0)], [w(0, 2, 2), w(1, 2, 2)], []])
 		// A loop's last frame has the pose of frame 0, so a run over all frames ends where every bone starts.
-		expect(planFrames('loop', poses, () => [0, 2])).toEqual([[w(0, 0), w(1, 0), w(2, 0)], [], []])
+		expect(planFrames('loop', poses, () => ({ ends: [0, 2], snaps: [] }))).toEqual([[w(0, 0), w(1, 0), w(2, 0)], [], []])
+	})
+
+	test('a snap is a write without interpolation', () => {
+		expect(planFrames('hold', poses, () => ({ ends: [0, 1, 2], snaps: [2] }))).toEqual([[w(0, 0), w(1, 0), w(2, 0)], [w(1, 1)], [w(0, 2, 0)]])
 	})
 
 	test('chunks hold whole frames up to the line limit', () => {
@@ -150,7 +154,7 @@ describe('frames', () => {
 })
 
 describe('data pack', () => {
-	const animation = (name: string, loop: Loop, priority: WarmPriority, poses: string[][], ends?: (bone: number) => number[]) => ({ name, loop, priority, poses, frames: planFrames(loop, poses, ends) })
+	const animation = (name: string, loop: Loop, priority: WarmPriority, poses: string[][], ends?: (bone: number) => number[]) => ({ name, loop, priority, poses, frames: planFrames(loop, poses, ends && ((b) => ({ ends: ends(b), snaps: [] }))) })
 	const input =(overrides: Partial<RigPackInput> = {}): RigPackInput => ({
 		rig: 'axia',
 		id: 0x1a2b3c4d,
@@ -255,6 +259,13 @@ describe('data pack', () => {
 			expect(lines(thinned, fn('frames/0/1')).slice(1)).toEqual([write(2, 'PortalCooldown:2,interpolation_duration:2,', 'X')])
 			expect(lines(thinned, fn('frames/0/2')).slice(1)).toEqual([write(1, 'interpolation_duration:1,', 'A'), 'scoreboard players set $Rigel.axia Rigel.Playing 0'])
 			expect(lines(thinned, fn('frames/1/1')).slice(1)).toEqual([write(1, 'interpolation_duration:1,', 'C')])
+		})
+
+		test('a snap sets the interpolation length to 0', () => {
+			const poses = [['a', 'b'], ['a', 'B'], ['A', 'X']]
+			const frames = planFrames('hold', poses, (b) => (b === 1 ? { ends: [0, 2], snaps: [] } : { ends: [0, 1, 2], snaps: [2] }))
+			const snapped = rigPack(input({ animations: [{ name: 'idle', loop: 'hold', priority: 'high', poses, frames }] }))
+			expect(lines(snapped, fn('frames/0/2')).slice(1)).toEqual([write(1, 'interpolation_duration:0,', 'A'), 'scoreboard players set $Rigel.axia Rigel.Playing 0'])
 		})
 
 		test('f/0 and rest leave start_interpolation out', () => {

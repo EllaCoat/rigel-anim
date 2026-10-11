@@ -1,7 +1,7 @@
 // Thinning: per bone, one write that the display-entity interpolation carries over several ticks, as long as every
 // tick in between stays within a tolerance of the pose it should show.
 import { compose, slerp, type Quat, type Vec3 } from '../bake/matrix'
-import type { Poses } from './frames'
+import type { Poses, Runs } from './frames'
 import type { Loop, Tolerance } from './types'
 
 // The parts Minecraft splits a written matrix into; clients interpolate them separately (Transformation.slerp).
@@ -161,27 +161,31 @@ function change(a: ArrayLike<number>, b: ArrayLike<number>): { rotation: number;
 }
 
 // A client that takes in the writes of several ticks between two of its ticks (packets bunching up, a slow frame, a
-// server catching up) applies only the last, and starts its run from the pose it drew last. Up to this many writes at
-// once keep the pose right.
+// server catching up) applies only the last, and starts its run from the pose it drew last. The writes of up to this
+// many ticks at once keep the pose right.
 // ponytail: a frame stuck over ~150 ms can still show a bone hidden at once shrinking over the next run; raise if seen.
 const MERGED = 3
 
-// Frames where one bone's runs end, from 0 to the last frame. The run from k to j is one write at frame k + 1 with the
-// pose of frame j, interpolated over j − k ticks, and covers at most `span` ticks. poses: each frame's written values.
+// One bone's runs (see Runs). The run from k to j is one write at frame k + 1 with the pose of frame j, interpolated
+// over j − k ticks, and covers at most `span` ticks. poses: each frame's written values.
 // When the writes of the one-tick runs right before it are lost, the client starts the run from a pose between where
 // the last one it applied started and ended. The run then has to hold from those starts too, give or take its own
 // largest change in a tick for each lost write, so that a bone hidden or moved at once is not shown going there over
-// the whole run. The first runs, whose start is the pose before play or the end of the loop, last one tick.
-export function runEnds(poses: ArrayLike<number>[], tolerance: Tolerance, span: number): number[] {
+// the whole run. A one-tick run within MERGED ticks after the bone is hidden or shown is a snap, shown at once: drawn
+// partway, it would pass part of the bone's size on to the next run. The first runs, whose start is the pose before
+// play or the end of the loop, last one tick.
+export function runEnds(poses: ArrayLike<number>[], tolerance: Tolerance, span: number): Runs {
 	const radians = tolerance.rotation * DEGREE
 	const splits = poses.map(split)
 	const steps = poses.slice(1).map((pose, m) => change(poses[m]!, pose))
+	const hidden = poses.map((p) => [0, 1, 2].every((c) => Math.hypot(p[c]!, p[4 + c]!, p[8 + c]!) < VANISH))
 	const last = poses.length - 1
 	const holds = (from: number, k: number, j: number, position: number, rotation: number) => {
 		for (let m = k + 1; m < j; m++) if (!within(splits[from]!, splits[j]!, (m - k) / (j - k), poses[m]!, position, rotation)) return false
 		return true
 	}
 	const ends = [0]
+	const snaps: number[] = []
 	let k = 0
 	while (k < last) {
 		const starts: number[] = []
@@ -195,14 +199,15 @@ export function runEnds(poses: ArrayLike<number>[], tolerance: Tolerance, span: 
 			if (!starts.every(lost)) break
 			j++
 		}
+		if (j === k + 1 && Array.from({ length: Math.min(MERGED, k) }, (_, i) => k - 1 - i).some((from) => hidden[from] !== hidden[k])) snaps.push(j)
 		ends.push(j)
 		k = j
 	}
-	return ends
+	return { ends, snaps }
 }
 
-// Run ends of each bone of an animation, for planFrames. A loop's last frame shows the pose of frame 0.
-export function animationRunEnds(loop: Loop, poses: Poses, tolerance: Tolerance, span: number): (bone: number) => number[] {
+// Runs of each bone of an animation, for planFrames. A loop's last frame shows the pose of frame 0.
+export function animationRunEnds(loop: Loop, poses: Poses, tolerance: Tolerance, span: number): (bone: number) => Runs {
 	const last = poses.length - 1
 	const values = poses.map((frame) => frame.map((pose) => pose.split(',').map((v) => Number.parseFloat(v))))
 	return (bone) => runEnds(poses.map((_, f) => values[f === last && loop === 'loop' ? 0 : f]![bone]!), tolerance, span)

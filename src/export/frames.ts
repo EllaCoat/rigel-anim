@@ -37,25 +37,32 @@ export interface FrameWrite {
 	bone: number
 	// Frame of `poses` the values come from.
 	pose: number
-	// Ticks the interpolation to the pose takes.
+	// Ticks the interpolation to the pose takes; 0 shows the pose at once.
 	duration: number
 }
 
+// One bone's runs: the frames they end at, from 0 to the last frame, and the ends of one-tick runs the client jumps
+// to without interpolating.
+export interface Runs {
+	ends: number[]
+	snaps: number[]
+}
+
 // The writes of each frame function, bones in order. f/0 writes every bone. A loop's last frame shows the pose of
-// frame 0, and the next tick plays f/1. Each bone's run from frame k to j (`ends`, every frame by default) is one
+// frame 0, and the next tick plays f/1. Each bone's run from frame k to j (`runs`, every frame by default) is one
 // write at frame k + 1 with the pose of frame j, left out when the bone already has that pose.
-export function planFrames(loop: Loop, poses: Poses, ends?: (bone: number) => number[]): FrameWrite[][] {
+export function planFrames(loop: Loop, poses: Poses, runs?: (bone: number) => Runs): FrameWrite[][] {
 	const last = poses.length - 1
 	const at = (f: number) => (f === last && loop === 'loop' ? 0 : f)
 	const frames: FrameWrite[][] = poses.map(() => [])
 	const bones = poses[0]?.length ?? 0
 	for (let bone = 0; bone < bones; bone++) {
 		frames[0]!.push({ bone, pose: 0, duration: 1 })
-		const runs = ends?.(bone) ?? poses.map((_, f) => f)
-		for (let i = 1; i < runs.length; i++) {
-			const k = runs[i - 1]!
-			const j = runs[i]!
-			if (poses[at(j)]![bone] !== poses[at(k)]![bone]) frames[k + 1]!.push({ bone, pose: at(j), duration: j - k })
+		const { ends, snaps } = runs?.(bone) ?? { ends: poses.map((_, f) => f), snaps: [] }
+		for (let i = 1; i < ends.length; i++) {
+			const k = ends[i - 1]!
+			const j = ends[i]!
+			if (poses[at(j)]![bone] !== poses[at(k)]![bone]) frames[k + 1]!.push({ bone, pose: at(j), duration: snaps.includes(j) ? 0 : j - k })
 		}
 	}
 	return frames

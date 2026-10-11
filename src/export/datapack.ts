@@ -68,7 +68,7 @@ export function rigPack(p: RigPackInput): Files {
 	const thin = thinned(p)
 	// f/0 also restores the shadow strength stop and pause change.
 	const head = (f: number, w: FrameWrite) =>
-		!thin ? '' : f === 0 ? 'shadow_strength:1f,PortalCooldown:0,interpolation_duration:1,' : w.duration > 1 ? `PortalCooldown:${f + w.duration - 1},interpolation_duration:${w.duration},` : 'interpolation_duration:1,'
+		!thin ? '' : f === 0 ? 'shadow_strength:1f,PortalCooldown:0,interpolation_duration:1,' : w.duration > 1 ? `PortalCooldown:${f + w.duration - 1},interpolation_duration:${w.duration},` : `interpolation_duration:${w.duration},`
 	// The rig's storage holds s, the end of an f/0 write without start_interpolation.
 	const headArgs = thin ? `rigel:${p.rig}` : FRAME_ARGS
 	const tail = (f: number) => (thin && f === 0 ? '$(s)' : '$(_)')

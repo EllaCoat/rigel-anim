@@ -63,11 +63,12 @@ export function placeVariantKeyframe(variant: string): void {
 		if (changing.length > 0) setKeyframeVariants(changing, variant)
 	} else {
 		const keyframes: BBKeyframe[] = []
+		const length = animation.length
 		Undo.initEdit({ keyframes })
 		const keyframe = effects.createKeyframe({ variant }, time, VARIANT_CHANNEL, false, false)
 		keyframe.time = time
 		keyframes.push(keyframe)
-		animation.setLength()
+		animation.setLength(length)
 		Undo.finishEdit('Add variant keyframe')
 	}
 	Timeline.setTime(time)

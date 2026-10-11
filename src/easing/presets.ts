@@ -1,4 +1,3 @@
-// Easing presets saved on this computer, and the JSON file used to share them.
 import { isEasing, type Easing } from './curves'
 
 const STORAGE_KEY = 'rigel.easing_presets'
@@ -22,7 +21,6 @@ export function presetFile(presets: Easing[]): string {
 	return JSON.stringify({ format: FILE_FORMAT, version: FILE_VERSION, presets }, null, '\t')
 }
 
-/** Reads a preset file; throws with a message for the user when it is not one. */
 export function parsePresetFile(text: string): Easing[] {
 	let data: unknown
 	try {
@@ -38,7 +36,6 @@ export function parsePresetFile(text: string): Easing[] {
 	return presets
 }
 
-/** Adds imported presets; a preset with the same name is replaced. */
 export function mergePresets(current: Easing[], imported: Easing[]): { presets: Easing[]; added: number; replaced: number } {
 	const presets = [...current]
 	let added = 0

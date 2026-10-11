@@ -38,7 +38,6 @@ export function normalizeQuat(q: Quat): Quat {
 	return n === 0 ? [...IDENTITY_QUAT] : [q[0] / n, q[1] / n, q[2] / n, q[3] / n]
 }
 
-// Angle of the rotation between two unit quaternions, in radians.
 export function quatAngle(a: Quat, b: Quat): number {
 	return 2 * Math.acos(Math.min(1, Math.abs(quatDot(a, b))))
 }

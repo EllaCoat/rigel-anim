@@ -1,13 +1,6 @@
-// Replaces eased segments with Blockbench's own bézier handles, so their shape can be edited in the
-// graph editor. Each eased segment becomes one cubic bézier fitted to its eased curve.
-//
-// Both ends of a converted segment must become bezier keyframes: Blockbench saves handles only for
-// bezier keyframes. That changes how the neighbouring segments interpolate, so every linear or
-// catmullrom segment whose interpolation would change is rewritten as a bézier with the same curve
-// (both are cubic in the progress, so the handles reproduce them). Its ends become bezier as well,
-// which can reach further segments, up to a step, catmullrom or bezier keyframe or the channel's end.
-// A held (step) segment cannot be kept that way, and neither can an overshooting easing on a rewritten
-// neighbour (Blockbench's bézier stops at its end values), so such channels are left unchanged.
+// Blockbench saves handles only on bezier keyframes, so both ends of a converted segment turn bezier. Neighbouring
+// linear and catmullrom segments that change with them are rewritten as béziers with the same curve (both are cubic
+// in the progress); a step segment cannot be, so its channel is left unchanged.
 import { ease, type EasingCurve } from './curves'
 import { fitBezier, thirdsBezier } from './fit'
 import { AXES, baseValue, channelKeyframes, easedValue, getEasing, isLooping, setEasing } from './keyframes'
@@ -16,24 +9,17 @@ import { segmentKind, type SegmentKind } from './segments'
 const SAMPLES = 200
 
 export interface ConversionReport {
-	/** eased segments converted */
 	converted: number
-	/** keyframes whose interpolation or handles changed */
 	keyframes: number
-	/** largest fitting error relative to the value range of the segment, over converted segments and axes */
 	maxRelativeError: number
-	/** eased segments left unchanged because their channel holds a step segment that would change */
 	blockedByStep: number
-	/** eased segments left unchanged because their channel uses molang expressions */
 	blockedByExpression: number
-	/** eased segments left unchanged because a neighbouring segment that would change overshoots */
 	blockedByOvershoot: number
 }
 
 interface Rewrite {
 	index: number
 	eased: boolean
-	/** per axis: the target curve sampled at SAMPLES + 1 points (eased) or at 0, 1/3, 2/3, 1 (others) */
 	samples: number[][]
 }
 
@@ -134,7 +120,6 @@ function applyPlan({ sorted, bezier, rewrites }: ChannelPlan): number {
 	return maxRelativeError
 }
 
-/** Converts the eased segments starting at the given keyframes, as one undo step. */
 export function convertEasingToBezier(keyframes: BBKeyframe[]): ConversionReport {
 	const report: ConversionReport = { converted: 0, keyframes: 0, maxRelativeError: 0, blockedByStep: 0, blockedByExpression: 0, blockedByOvershoot: 0 }
 	const selected = new Set(keyframes)

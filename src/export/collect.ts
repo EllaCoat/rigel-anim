@@ -1,4 +1,3 @@
-// Reads the open project into the plain data the export is generated from.
 import type { Vec3 } from '../bake/matrix'
 import { collectBones, readBoneMatrices, sampleAnimation, tickCount } from '../bake/sample'
 import { getPriority, getThin } from './settings'
@@ -14,7 +13,6 @@ function cubeSource(cube: Cube, textures: Texture[]): CubeSource {
 	const faces: CubeSource['faces'] = {}
 	for (const direction of DIRECTIONS) {
 		const face = cube.faces[direction]
-		// No texture (null) or a hidden face (false) draws nothing in Minecraft either.
 		if (!face || typeof face.texture !== 'string' || (face as { enabled?: boolean }).enabled === false) continue
 		const texture = textures.findIndex((t) => t.uuid === face.texture)
 		if (texture < 0) continue
@@ -36,7 +34,7 @@ function cubeSource(cube: Cube, textures: Texture[]): CubeSource {
 function restMatrices(groups: Group[]): Float64Array {
 	const rest = new Float64Array(groups.length * 16)
 	try {
-		// With `true` the bone matrices keep the pose the preview showed last.
+		// Not `true`: that would leave the bone matrices at the pose the preview showed last.
 		Animator.showDefaultPose()
 		readBoneMatrices(groups, rest, 0)
 	} finally {

@@ -10,7 +10,6 @@ export const WARM_PRIORITIES: readonly WarmPriority[] = ['xhigh', 'high', 'low']
 export interface FaceSource {
 	// In the texture's UV size, as Blockbench shows it.
 	uv: [number, number, number, number]
-	// Index into RigSource.textures.
 	texture: number
 	rotation: number
 	tint: number
@@ -47,7 +46,6 @@ export interface Tolerance {
 	rotation: number
 }
 
-// Thinning of one animation: as the project sets it, none, or its own tolerance.
 export type AnimationThin = 'project' | 'off' | Tolerance
 
 export interface AnimationSource {
@@ -60,7 +58,6 @@ export interface AnimationSource {
 	matrices: Float64Array
 }
 
-// Everything the export reads from a Blockbench project, in plain data.
 export interface RigSource {
 	bones: BoneSource[]
 	textures: TextureSource[]
@@ -75,11 +72,9 @@ export interface RigSettings {
 	id: number
 	item: string
 	chunkLines: number
-	// The project's thinning tolerance; none when undefined.
 	thin?: Tolerance
 	// Longest run one write may cover, in ticks.
 	span: number
 }
 
-// Path inside a pack → content.
 export type Files = Map<string, string | Uint8Array>

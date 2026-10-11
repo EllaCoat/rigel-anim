@@ -1,5 +1,3 @@
-// Thinning: per bone, one write that the display-entity interpolation carries over several ticks, as long as every
-// tick in between stays within a tolerance of the pose it should show.
 import { compose, slerp, type Quat, type Vec3 } from '../bake/matrix'
 import type { Poses, Runs } from './frames'
 import type { Loop, Tolerance } from './types'
@@ -48,7 +46,6 @@ function normalize([x, y, z, w]: Quat): Quat {
 	return [f(x * n), f(y * n), f(z * n), f(w * n)]
 }
 
-// sinHalf and cosHalf of a rotation by an angle.
 type Givens = [number, number]
 
 function fromUnnormalized(a: number, b: number): Givens {
@@ -82,7 +79,6 @@ function qrGivens(a: number, b: number): Givens {
 	return fromUnnormalized(s, c)
 }
 
-// One sweep of the Jacobi rotations that diagonalize the symmetric matrix b, accumulated in q.
 function stepJacobi(b: M3, q: Quat): [M3, Quat] {
 	const similar = (m: M3, r: M3) => mul(transpose(r), mul(m, r))
 	if (f(f(b[1]! * b[1]!) + f(b[3]! * b[3]!)) > SMALL) {
@@ -133,9 +129,7 @@ const DEGREE = Math.PI / 180
 // Columns shorter than this (a block of the model drawn a thousandth of a block long) count as vanished.
 const VANISH = 1e-3
 
-// Whether the client's interpolation from a to b at progress t shows the written matrix `truth`: each axis (column)
-// within `rotation` radians of its length, which bounds both its turn and its stretch, and the translation within
-// `position` unless every axis has vanished and the bone cannot be seen.
+// An axis (column) within `rotation` radians of its length bounds both its turn and its stretch.
 function within(a: Split, b: Split, t: number, truth: ArrayLike<number>, position: number, rotation: number): boolean {
 	const lerp = (x: Vec3, y: Vec3): Vec3 => [x[0] + (y[0] - x[0]) * t, x[1] + (y[1] - x[1]) * t, x[2] + (y[2] - x[2]) * t]
 	const m = compose(lerp(a.translation, b.translation), slerp(a.left, b.left, t), lerp(a.scale, b.scale), slerp(a.right, b.right, t))
@@ -161,8 +155,6 @@ function change(a: ArrayLike<number>, b: ArrayLike<number>): { rotation: number;
 // ponytail: writes of 4+ ticks at once (a frame stuck ~150 ms) can show a hidden bone shrinking over a run; raise if seen.
 const MERGED = 3
 
-// One bone's runs. The run from k to j is one write at frame k + 1 with the pose of frame j, interpolated over j − k
-// ticks, and covers at most `span` ticks. poses: each frame's written values.
 export function runEnds(poses: ArrayLike<number>[], tolerance: Tolerance, span: number): Runs {
 	const radians = tolerance.rotation * DEGREE
 	const splits = poses.map(split)
@@ -196,7 +188,6 @@ export function runEnds(poses: ArrayLike<number>[], tolerance: Tolerance, span: 
 	return { ends, snaps }
 }
 
-// Runs of each bone of an animation, for planFrames. A loop's last frame shows the pose of frame 0.
 export function animationRunEnds(loop: Loop, poses: Poses, tolerance: Tolerance, span: number): (bone: number) => Runs {
 	const last = poses.length - 1
 	const values = poses.map((frame) => frame.map((pose) => pose.split(',').map((v) => Number.parseFloat(v))))

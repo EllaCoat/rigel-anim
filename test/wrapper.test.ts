@@ -1,5 +1,4 @@
-// Checks what scripts/test.ts reports for each kind of run. The fixtures are not named *.test.ts,
-// so they only run when passed explicitly.
+// The fixtures are not named *.test.ts, so they only run when passed explicitly.
 import { expect, test } from 'bun:test'
 import { join } from 'node:path'
 

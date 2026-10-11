@@ -1,9 +1,8 @@
-// Easing stored on keyframes and applied while Blockbench interpolates.
 import { FORMAT_ID } from '../format'
 import { isEasing, type Easing } from './curves'
 import { catmullromNeighbours, easedProgress, segmentKind, type SegmentContext } from './segments'
 
-/** Keyframe property holding the easing of the segment that starts at the keyframe; {} when none. */
+/** The easing of the segment that starts at the keyframe; {} when none. */
 export const EASING_PROPERTY = 'rigel_easing'
 
 type EasedKeyframe = BBKeyframe & { [EASING_PROPERTY]?: unknown }
@@ -23,7 +22,6 @@ export function isRigelProject(): boolean {
 	return Format?.id === FORMAT_ID
 }
 
-/** The keyframes of the keyframe's channel in time order, as Blockbench sorts them for catmullrom. */
 export function channelKeyframes(keyframe: BBKeyframe): BBKeyframe[] {
 	const animator = keyframe.animator as unknown as Record<string, BBKeyframe[]>
 	return [...(animator[keyframe.channel] ?? [])].sort((a, b) => a.time - b.time)
@@ -45,7 +43,6 @@ export function segmentContext(sorted: BBKeyframe[], index: number, loop: boolea
 	}
 }
 
-/** The progress Blockbench should use between before and after at raw progress t. */
 export function progressFor(easing: Easing, t: number, before: BBKeyframe, after: BBKeyframe, linearPath: boolean): number {
 	if (linearPath) return easedProgress(easing.curve, t, { kind: 'linear', hasBefore: false, hasAfter: false, discontinuous: false })
 	const sorted = channelKeyframes(before)
@@ -67,10 +64,6 @@ function onInterpolate(event: InterpolateEvent): { t: number } | undefined {
 	return { t: progressFor(easing, event.t, event.keyframe_before, event.keyframe_after, linearPath) }
 }
 
-/**
- * The value Blockbench's own interpolation gives for segment [index, index + 1] at progress alpha,
- * without easing.
- */
 export function baseValue(sorted: BBKeyframe[], index: number, axis: Axis, alpha: number, loop: boolean): number {
 	const before = sorted[index]!
 	const after = sorted[index + 1]!
@@ -88,7 +81,6 @@ export function baseValue(sorted: BBKeyframe[], index: number, axis: Axis, alpha
 	}
 }
 
-/** The value Blockbench shows for segment [index, index + 1] at raw progress t, easing included. */
 export function easedValue(sorted: BBKeyframe[], index: number, axis: Axis, t: number, loop: boolean): number {
 	const before = sorted[index]!
 	const easing = getEasing(before)

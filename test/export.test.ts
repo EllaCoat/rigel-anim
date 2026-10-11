@@ -137,7 +137,6 @@ describe('frames', () => {
 			[0, 1, 2],
 		]
 		expect(planFrames('hold', poses, (b) => ({ ends: runs[b]!, snaps: [] }))).toEqual([[w(0, 0), w(1, 0), w(2, 0)], [w(0, 2, 2), w(1, 2, 2)], []])
-		// A loop's last frame has the pose of frame 0, so a run over all frames ends where every bone starts.
 		expect(planFrames('loop', poses, () => ({ ends: [0, 2], snaps: [] }))).toEqual([[w(0, 0), w(1, 0), w(2, 0)], [], []])
 	})
 
@@ -242,7 +241,6 @@ describe('data pack', () => {
 	})
 
 	describe('with a run over several ticks', () => {
-		// Bone 1 of idle covers frames 0 to 2 with one write at frame 1.
 		const thinned = rigPack(
 			input({
 				animations: [
@@ -366,7 +364,6 @@ describe('settings', () => {
 	})
 })
 
-// One bone with a cube, an identity rest pose and a two-tick loop that moves it up.
 function source(): RigSource {
 	const identity = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
 	const moved = (y: number) => identity.map((v, i) => (i === 13 ? y : v))

@@ -1,11 +1,9 @@
-// Export settings saved in the project file: per project, and the warm-up priority and thinning per animation.
 import { FORMAT_ID } from '../format'
 import { WARM_PRIORITIES, type AnimationThin, type Tolerance, type WarmPriority } from './types'
 
 export const DEFAULT_CHUNK_LINES = 500
 export const DEFAULT_PRIORITY: WarmPriority = 'high'
 export const DEFAULT_SPAN = 20
-// What the tolerance fields start with; thinning itself is off until turned on.
 export const DEFAULT_TOLERANCE: Tolerance = { position: 0.01, rotation: 0.5 }
 
 export interface ProjectSettings {
@@ -15,7 +13,6 @@ export interface ProjectSettings {
 	datapacks: string
 	resourcePack: string
 	chunkLines: number
-	// Undefined when thinning is off.
 	thin?: Tolerance
 	// The tolerance the dialog shows, kept while thinning is off.
 	tolerance: Tolerance
@@ -111,7 +108,6 @@ export function getThinMode(animation: BBAnimation): AnimationThinMode {
 	return ANIMATION_THIN.includes(value as AnimationThinMode) ? (value as AnimationThinMode) : 'project'
 }
 
-// The tolerance the animation's own fields hold, used when its mode is 'custom'.
 export function getAnimationTolerance(animation: BBAnimation): Tolerance {
 	return toleranceIn(animation as unknown as Bag)
 }
@@ -128,7 +124,6 @@ export function setThin(animation: BBAnimation, mode: AnimationThinMode, toleran
 	bag[ROTATION_KEY] = tolerance.rotation
 }
 
-// A random unsigned 32-bit number other than 0, made once per project.
 export function newRigId(): number {
 	const [n] = crypto.getRandomValues(new Uint32Array(1))
 	return n || 1

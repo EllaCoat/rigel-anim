@@ -22,7 +22,6 @@ export function boneScale(bone: BoneSource): number {
 	return Math.max(1, reach / REACH)
 }
 
-// The item model of one bone. Problems Minecraft would reject are added to `errors`.
 export function itemModel(bone: BoneSource, textures: TextureSource[], textureId: (index: number) => string, errors: string[]): { json: object; scale: number } {
 	const k = boneScale(bone)
 	const place = (v: Vec3) => v.map((x, i) => round(CENTRE + (x - bone.pivot[i]!) / k))

@@ -2,8 +2,7 @@ export const FORMAT_ID = 'rigel'
 
 let format: ModelFormat | undefined
 
-// Bones are groups; cubes follow the item-model rules of 1.20.4, the stricter of the two targets
-// (one rotation axis, multiples of 22.5°).
+// rotation_limit and rotation_snap: cubes follow 1.20.4's item-model rules, the stricter of the two targets.
 export function registerFormat(): void {
 	format = new ModelFormat(FORMAT_ID, {
 		icon: 'movie',

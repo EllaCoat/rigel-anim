@@ -80,7 +80,6 @@ describe('easing curves', () => {
 			return peak
 		}
 		expect(elastic(2)).toBeGreaterThan(elastic() + 0.1)
-		// A shorter period oscillates more often, so the first overshoot comes earlier.
 		const firstPeak = (period: number) => {
 			for (let i = 1; i < 1000; i++) if (ease({ type: 'function', family: 'elastic', mode: 'out', period }, i / 1000) > 1) return i
 			return 1000
@@ -114,7 +113,6 @@ describe('easing curves', () => {
 	})
 })
 
-// Value of a bézier with time handles x1, x2 at time t, from f0 to f3.
 function bezierAt(f0: number, x1: number, v1: number, x2: number, v2: number, f3: number, t: number): number {
 	let lo = 0
 	let hi = 1

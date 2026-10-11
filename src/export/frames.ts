@@ -2,21 +2,18 @@ import type { Loop } from './types'
 
 const BASE_DIGITS = 4
 
-// The first 12 values (rows 0–2) of the matrix a bone entity gets, from a column-major bone matrix:
-// the bone's transform, half a turn about y to undo the one item_display adds before it draws the item,
-// and the scale k the item model was shrunk by.
+// Rows 0–2 of a bone entity's matrix: the column-major bone matrix, half a turn about y to undo the one
+// item_display adds, and the scale k the item model was shrunk by.
 export function entityValues(m: ArrayLike<number>, at: number, k: number): number[] {
 	const v: number[] = []
 	for (let r = 0; r < 3; r++) v.push(-k * m[at + r]!, k * m[at + 4 + r]!, -k * m[at + 8 + r]!, m[at + 12 + r]!)
 	return v
 }
 
-// Shrunk bones get as many extra digits as k has before the point.
 export function digitsFor(k: number): number {
 	return BASE_DIGITS + (k > 1 ? String(Math.floor(k)).length : 0)
 }
 
-// SNBT float with the leading 0 and trailing zeros dropped: 0.5 → .5f, -0.25 → -.25f, 1 → 1f.
 export function formatFloat(value: number, digits: number): string {
 	let s = value.toFixed(digits)
 	if (s.includes('.')) s = s.replace(/0+$/, '').replace(/\.$/, '')
@@ -33,23 +30,19 @@ export function poseString(m: ArrayLike<number>, at: number, k: number): string 
 export type Poses = string[][]
 
 export interface FrameWrite {
-	// Renderable bone.
 	bone: number
-	// Frame of `poses` the values come from.
 	pose: number
-	// Ticks the interpolation to the pose takes; 0 shows the pose at once.
 	duration: number
 }
 
-// One bone's runs: the frames they end at, from 0 to the last frame, and the ends of runs written without interpolating.
+// ends: the frames runs end at, from 0 to the last frame; snaps: the ends of runs written without interpolating.
 export interface Runs {
 	ends: number[]
 	snaps: number[]
 }
 
-// The writes of each frame function, bones in order. f/0 writes every bone. A loop's last frame shows the pose of
-// frame 0, and the next tick plays f/1. Each bone's run from frame k to j (`runs`, every frame by default) is one
-// write at frame k + 1 with the pose of frame j, left out when the bone already has that pose.
+// A run from frame k to j is one write at frame k + 1 with the pose of frame j, left out when the bone already has
+// that pose. A loop's last frame shows the pose of frame 0.
 export function planFrames(loop: Loop, poses: Poses, runs?: (bone: number) => Runs): FrameWrite[][] {
 	const last = poses.length - 1
 	const at = (f: number) => (f === last && loop === 'loop' ? 0 : f)
@@ -73,7 +66,6 @@ export interface WarmItem {
 	lines: number
 }
 
-// Consecutive items whose lines add up to at most `limit`; an item longer than that gets a chunk of its own.
 export function planChunks(items: WarmItem[], limit: number): WarmItem[][] {
 	const chunks: WarmItem[][] = []
 	let current: WarmItem[] = []

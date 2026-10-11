@@ -3,7 +3,6 @@ const PIXELS_PER_BLOCK = 16
 
 type Stackable = { stackAnimations(animations: BBAnimation[], inLoop: boolean): void }
 
-// Bones in outliner order, parents before children.
 export function collectBones(): Group[] {
 	const bones: Group[] = []
 	const visit = (nodes: OutlinerNode[]) => {
@@ -36,7 +35,7 @@ export function tickCount(animation: BBAnimation): number {
 	return Math.max(0, Math.ceil(animation.length * TICKS_PER_SECOND - 1e-9))
 }
 
-// The pose Blockbench computes for each tick, with the same calls the preview uses for one animation.
+// Each tick's pose comes from the same calls the preview makes for one animation.
 export function sampleAnimation(animation: BBAnimation, bones: Group[]): Float64Array {
 	const ticks = tickCount(animation)
 	const matrices = new Float64Array((ticks + 1) * bones.length * 16)

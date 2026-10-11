@@ -1,5 +1,4 @@
-// Cubic béziers in the form Blockbench uses for keyframe handles: time runs from 0 to 1 along the
-// segment and the value from f(0) to f(1); (x1, v1) and (x2, v2) are the two inner control points.
+// Béziers as Blockbench keyframe handles: time 0 to 1 along the segment; (x1, v1) and (x2, v2) are the inner points.
 import { solveBezierX } from './curves'
 
 export interface BezierFit {
@@ -7,7 +6,6 @@ export interface BezierFit {
 	v1: number
 	x2: number
 	v2: number
-	/** largest |bezier - target| over the samples */
 	error: number
 }
 
@@ -16,11 +14,8 @@ const bernstein = (s: number): [number, number, number, number] => {
 	return [u * u * u, 3 * u * u * s, 3 * u * s * s, s * s * s]
 }
 
-/**
- * Inner control values of the bézier with time handles at 1/3 and 2/3, where time is linear in the
- * curve parameter, through f(0), f(1/3), f(2/3), f(1). Exact for any cubic in t, so linear and
- * catmullrom segments keep their shape.
- */
+// With time handles at 1/3 and 2/3, time is linear in the curve parameter, so this is exact for any cubic in t:
+// linear and catmullrom segments keep their shape.
 export function thirdsBezier(f0: number, f1: number, f2: number, f3: number): [number, number] {
 	// f(1/3) = (8 f0 + 12 v1 + 6 v2 + f3) / 27 and f(2/3) = (f0 + 6 v1 + 12 v2 + 8 f3) / 27
 	const a = 27 * f1 - 8 * f0 - f3
@@ -38,7 +33,6 @@ export function fitBezier(samples: ArrayLike<number>): BezierFit {
 			if (fit.error < best.error) best = fit
 		}
 	}
-	// Pattern search around the best grid point.
 	let step = 0.5 / GRID
 	while (step > 1e-3) {
 		let improved = false
@@ -56,7 +50,6 @@ export function fitBezier(samples: ArrayLike<number>): BezierFit {
 
 const clamp01 = (x: number) => Math.min(1, Math.max(0, x))
 
-// Least-squares inner values for fixed time handles.
 function fitWithTimeHandles(samples: ArrayLike<number>, x1: number, x2: number): BezierFit {
 	const n = samples.length - 1
 	const f0 = samples[0]!

@@ -1,10 +1,9 @@
-// Data packs for Minecraft 1.20.4: one per rig (rigel:<rig>/…) and the common pack rigel (rigel:core/…).
 import { planChunks, type FrameWrite, type Poses, type WarmItem } from './frames'
 import { WARM_PRIORITIES, type Files, type Loop, type WarmPriority } from './types'
 
 export const NAMESPACE = 'rigel'
 export const COMMON_PACK = 'rigel'
-// Paths and storages the common pack uses under the namespace, and the common pack's folder.
+// The function paths and storages the common pack uses under the namespace, and its folder.
 export const RESERVED_RIG_NAMES = ['core', 'const', 'warm', COMMON_PACK]
 // Written into every pack folder the export creates; only folders with it are replaced. Each pack
 // writes it first, so a folder cut short by a failed write can still be replaced next time.
@@ -14,7 +13,7 @@ const PACK_FORMAT = 26
 const OBJECTIVES = ['Rigel.Frame', 'Rigel.Playing', 'Rigel.PlayedAt', 'Rigel.Warming', 'Rigel.Temp']
 const FRAME_ARGS = 'rigel:const FrameArgs'
 const LIST: Record<WarmPriority, string> = { xhigh: 'XHigh', high: 'High', low: 'Low' }
-// An interpolation this long (ticks, about 1.6 years) does not visibly move.
+// Ticks; an interpolation this long does not visibly move.
 const HOLD = 1_000_000_000
 
 const fn = (path: string) => `data/${NAMESPACE}/functions/${path}.mcfunction`
@@ -42,19 +41,10 @@ export interface RigPackInput {
 	id: number
 	item: string
 	chunkLines: number
-	// Renderable bones in outliner order.
 	bones: { cmd: number; rest: string }[]
-	// frames: planFrames of the poses.
 	animations: { name: string; loop: Loop; priority: WarmPriority; poses: Poses; frames: FrameWrite[][] }[]
 }
 
-// Writes that interpolate over more than one tick. Then f/0 sets every bone's interpolation length to 1, the writes of
-// an animation with such runs set it each time, and stop and pause hold each bone at the pose the client shows:
-// changing shadow_strength (not drawn while shadow_radius is 0) makes the client start a new interpolation from that
-// pose (Display.createInterpolatedRenderState), which a long duration keeps from moving. A write over several ticks keeps the frame its run ends at in PortalCooldown,
-// which display entities neither count down nor send to clients, so restart can finish the run on time.
-// f/0 and rest leave start_interpolation out: restarting the interpolation without changing the pose makes the client
-// replay its last interpolation (Display.tick rebuilds it only when a drawn value changes), from the start of a long run.
 const hasRuns = (a: RigPackInput['animations'][number]) => a.frames.some((writes) => writes.some((w) => w.duration > 1))
 const thinned = (p: RigPackInput) => p.animations.some(hasRuns)
 
@@ -67,12 +57,16 @@ export function rigPack(p: RigPackInput): Files {
 	const write = (path: string, lines: string[]) => files.set(fn(`${p.rig}/${path}`), text(lines))
 	const warmingCheck = `execute if score ${self} Rigel.Warming matches 1 run return 0`
 	const thin = thinned(p)
-	// f/0 also restores the shadow strength stop and pause change.
+	// f/0 restores the shadow_strength stop and pause change. PortalCooldown keeps the frame a run ends at for restart;
+	// display entities neither count it down nor send it.
 	const head = (f: number, w: FrameWrite, runs: boolean) =>
 		!thin ? '' : f === 0 ? 'shadow_strength:1f,PortalCooldown:0,interpolation_duration:1,' : !runs ? '' : w.duration > 1 ? `PortalCooldown:${f + w.duration - 1},interpolation_duration:${w.duration},` : `interpolation_duration:${w.duration},`
-	// The rig's storage holds s, the end of an f/0 write without start_interpolation.
+	// Thinned packs leave start_interpolation out of f/0 and rest: sent with an unchanged pose, it makes the client
+	// replay its last interpolation (Display.tick).
 	const headArgs = thin ? `rigel:${p.rig}` : FRAME_ARGS
 	const tail = (f: number) => (thin && f === 0 ? '$(s)' : '$(_)')
+	// A changed shadow_strength (not drawn while shadow_radius is 0) restarts the client's interpolation from the
+	// pose it shows (Display.createInterpolatedRenderState), and HOLD keeps it there.
 	const hold = `execute as ${root} on passengers run data merge entity @s {shadow_strength:.999f,interpolation_duration:${HOLD},start_interpolation:0}`
 
 	files.set(MARKER, json({ generator: 'rigel', rig: p.rig, id: hexId(p.id) }))
@@ -160,7 +154,6 @@ export function rigPack(p: RigPackInput): Files {
 				]
 			: []),
 	])
-	// Run as each bone: interpolate from the held pose to the end of its run in the ticks left (1 when it has none).
 	if (thin)
 		write('resume', [
 			'execute store result score $Rigel.Left Rigel.Temp run data get entity @s PortalCooldown',

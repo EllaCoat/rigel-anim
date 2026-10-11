@@ -38,7 +38,6 @@ export function toleranceOf(animation: AnimationSource, settings: RigSettings): 
 	return animation.thin === 'project' ? settings.thin : animation.thin
 }
 
-// Lowercase letters, digits and _, unique among the names already taken.
 export function uniqueName(name: string, taken: Set<string>): string {
 	const base = name.toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '') || 'unnamed'
 	let out = base
@@ -50,11 +49,8 @@ export function uniqueName(name: string, taken: Set<string>): string {
 export interface ExportResult {
 	rigPack: Files
 	commonPack: Files
-	// Files of the shared resource pack that belong to this rig alone.
 	resources: Files
-	// The item's model with this rig's overrides merged in.
 	itemModel: { path: string; json: string }
-	// Bone writes in the frame functions, and how many there would be without thinning.
 	writes: { thinned: number; full: number }
 }
 

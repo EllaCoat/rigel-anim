@@ -1,4 +1,3 @@
-// The keyframe context menu entry and the preset dialog.
 import type { CustomMenuItem, MenuItem } from 'blockbench-types/generated/interface/menu'
 import { convertEasingToBezier } from './convert'
 import {
@@ -27,7 +26,6 @@ const MENU_ID = 'rigel_easing'
 const MODE_LABEL: Record<Mode, string> = { in: 'In', out: 'Out', inOut: 'InOut' }
 const capitalize = (s: string) => s[0]!.toUpperCase() + s.slice(1)
 
-/** A small plot of the curve as an image data URL, for menus and lists. */
 export function curveIcon(curve: EasingCurve): string {
 	const points: string[] = []
 	for (let i = 0; i <= 32; i++) {
@@ -128,7 +126,6 @@ const menuItem: CustomMenuItem = {
 	children: menuChildren,
 }
 
-/** Only the parameters of the curve's family, with defaults left out. */
 function tidyCurve(curve: EasingCurve): EasingCurve {
 	if (curve.type === 'bezier') return { type: 'bezier', x1: curve.x1, y1: curve.y1, x2: curve.x2, y2: curve.y2 }
 	const tidy: FunctionCurve = { type: 'function', family: curve.family, mode: curve.mode }
@@ -149,8 +146,6 @@ function editable(easing: Easing): Easing {
 
 const UNNAMED = '名前なし'
 
-// Presets as saved and exported: a preset whose name was cleared keeps a placeholder name instead
-// of being dropped.
 function storable(presets: Easing[]): Easing[] {
 	return presets.map((p) => ({ name: p.name.trim() || UNNAMED, curve: tidyCurve(p.curve) })).filter(isEasing)
 }
@@ -161,7 +156,6 @@ function uniqueName(base: string, presets: Easing[]): string {
 	for (let i = 2; ; i++) if (!names.has(`${base} ${i}`)) return `${base} ${i}`
 }
 
-/** The bézier of the first selected keyframe's segment, normalized on the axis that moves most. */
 function bezierFromSelection(): BezierCurve | string {
 	const keyframe = selectedKeyframes()[0]
 	if (!keyframe) return 'キーフレームを選んでから取り込んでください。'
@@ -185,7 +179,6 @@ function bezierFromSelection(): BezierCurve | string {
 	}
 }
 
-// Plot coordinates: x from 0 to 1 spans 40..200; the value range shown spans 220..20.
 const PLOT = { size: 240, left: 40, span: 160, top: 20, height: 200 }
 // Béziers get room for their handles; function curves are fitted, overshoot included.
 const BEZIER_RANGE: [number, number] = [-0.5, 1.5]
@@ -255,7 +248,6 @@ function presetDialogComponent(): Vue.Component {
 			const tick = (now: number) => {
 				// Closing the dialog only detaches it, so the preview stops once it leaves the document.
 				if (!(this as any).$el?.isConnected) return
-				// 1.2 s of motion, then 0.4 s at the end.
 				;(this as any).phase = Math.min(1, ((now - start) % 1600) / 1200)
 				;(this as any).frame = requestAnimationFrame(tick)
 			}

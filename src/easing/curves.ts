@@ -1,6 +1,4 @@
-// Easing curves: the built-in functions (the usual Penner / easings.net definitions, with the overshoot
-// of back and the amplitude and period of elastic adjustable) and normalized cubic béziers with the same
-// meaning as CSS cubic-bezier(). Both map the progress t through a segment, 0 to 1, to an eased progress.
+// Function curves follow Penner's definitions (easings.net); béziers mean the same as CSS cubic-bezier().
 
 export const FAMILIES = ['sine', 'quad', 'cubic', 'quart', 'quint', 'expo', 'circ', 'back', 'elastic', 'bounce'] as const
 export const MODES = ['in', 'out', 'inOut'] as const
@@ -11,11 +9,9 @@ export interface FunctionCurve {
 	type: 'function'
 	family: Family
 	mode: Mode
-	/** back only */
 	overshoot?: number
-	/** elastic only */
 	amplitude?: number
-	/** elastic only, in units of the segment */
+	/** in units of the segment */
 	period?: number
 }
 export interface BezierCurve {
@@ -53,8 +49,6 @@ function bounceOut(t: number): number {
 	return n * (t - 2.625 / d) ** 2 + 0.984375
 }
 
-// The in-variant of each family; out and in-out are derived from it, except where the family is
-// defined piecewise in its own right.
 function easeIn(curve: FunctionCurve): Fn {
 	switch (curve.family) {
 		case 'sine':
@@ -141,7 +135,6 @@ export function bezierEase(curve: BezierCurve, t: number): number {
 	return bezier1(curve.y1, curve.y2, solveBezierX(curve.x1, curve.x2, t))
 }
 
-/** The eased progress for t in [0, 1]; the ends map to exactly 0 and 1. */
 export function ease(curve: EasingCurve, t: number): number {
 	if (t <= 0) return 0
 	if (t >= 1) return 1
@@ -152,7 +145,6 @@ export function ease(curve: EasingCurve, t: number): number {
 const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
 const optionalFinite = (v: unknown) => v === undefined || finite(v)
 
-/** Checks data read from a project or a preset file. */
 export function isEasingCurve(value: unknown): value is EasingCurve {
 	if (typeof value !== 'object' || value === null) return false
 	const c = value as Record<string, unknown>

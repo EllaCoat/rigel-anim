@@ -14,13 +14,10 @@ export interface ExportFs {
 }
 
 export interface ExportTarget {
-	// The world's datapacks folder: the rig's pack and the common pack go in as folders.
 	datapacks: { fs: ExportFs; dir: string }
-	// The root of the shared resource pack.
 	resourcePack: { fs: ExportFs; dir: string }
 }
 
-// Another project exported a rig under the same name; the export goes ahead only when the user agrees to replace it.
 export class ExportConflict extends Error {
 	constructor(readonly conflicts: string[]) {
 		super(conflicts.join('\n'))
@@ -36,7 +33,6 @@ const parent = (path: string) => path.slice(0, Math.max(path.lastIndexOf('/'), p
 
 type Marker = Record<string, unknown>
 
-// A string is the reason the file is not a marker rigel wrote.
 function readMarker(fs: ExportFs, file: string): Marker | string {
 	try {
 		const marker: unknown = JSON.parse(fs.readFileSync(file, 'utf8'))
@@ -45,7 +41,6 @@ function readMarker(fs: ExportFs, file: string): Marker | string {
 	return `${file} は Rigel の印として読めないため、書き換えません。`
 }
 
-// undefined when the folder is missing or empty, a string when it is not a folder rigel wrote.
 function folderMarker(fs: ExportFs, dir: string): Marker | string | undefined {
 	if (!fs.existsSync(dir)) return undefined
 	const entries = fs.readdirSync(dir)
@@ -54,7 +49,6 @@ function folderMarker(fs: ExportFs, dir: string): Marker | string | undefined {
 	return readMarker(fs, join(dir, MARKER))
 }
 
-// The resource pack's marker maps each rig name to the ID of the project that exported it.
 function rigsOf(marker: Marker): Map<string, string> {
 	const rigs = marker.rigs
 	return new Map(typeof rigs === 'object' && rigs !== null ? Object.entries(rigs).filter((e): e is [string, string] => typeof e[1] === 'string') : [])

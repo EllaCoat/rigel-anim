@@ -10,14 +10,12 @@ function axisAngle(axis: Vec3, degrees: number): Quat {
 	return [axis[0] * s, axis[1] * s, axis[2] * s, Math.cos((degrees * DEGREE) / 2)]
 }
 
-// The 12 written values (rows of the 3×4 matrix) of translation · rotation · scale, optionally sheared.
 function values(t: Vec3, q: Quat, s: Vec3 = [1, 1, 1], shear = 0): number[] {
 	const r = quatToMat3(q)
 	const a = [0, 1, 2].map((row) => [r[row * 3]! * s[0], r[row * 3 + 1]! * s[1] + shear * r[row * 3]! * s[0], r[row * 3 + 2]! * s[2]])
 	return [0, 1, 2].flatMap((row) => [a[row]![0]!, a[row]![1]!, a[row]![2]!, t[row]!])
 }
 
-// The rows of the matrix a split composes back to.
 function rows(s: ReturnType<typeof split>): number[] {
 	const m = compose(s.translation, s.left, s.scale, s.right)
 	return [0, 1, 2].flatMap((r) => [m[r]!, m[4 + r]!, m[8 + r]!, m[12 + r]!])

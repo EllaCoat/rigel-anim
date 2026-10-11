@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test'
+import { callVariant, type Worn } from '../scripts/shot-variants'
 import { variantCalls, variantCuts } from '../src/export/variant-keys'
 import { notShowing } from '../src/variant/keyframes'
 import { variantAt, variantPerBone, viewPlan } from '../src/variant/keys'
@@ -175,7 +176,7 @@ describe('view plan', () => {
 	const bones = ['body', 'face']
 	const excluded = new Map([['bodyV', new Set(['face'])], ['faceV', new Set(['body'])]])
 	const plan = (input: Partial<Parameters<typeof viewPlan>[0]>) => {
-		const { byBone, other, headline } = viewPlan({ painting: false, keys: [], time: 0, bones, excluded, chosen: 'default', ...input })
+		const { byBone, other, headline } = viewPlan({ painting: false, keys: [], loop: 'hold', length: 2, ticks: 40, time: 0, bones, excluded, chosen: 'default', ...input })
 		return { byBone: Object.fromEntries(byBone), other, headline }
 	}
 
@@ -188,6 +189,59 @@ describe('view plan', () => {
 	test('the headline is the keyframe at the playhead, or the chosen variant without keyframes', () => {
 		expect(plan({ keys: [{ time: 0, variant: 'bodyV' }, { time: 1, variant: 'faceV' }], time: 1.5, chosen: 'bodyV' }).headline).toBe('faceV')
 		expect(plan({ chosen: 'faceV' })).toEqual({ byBone: { body: 'default', face: 'faceV' }, other: 'faceV', headline: 'faceV' })
+	})
+
+	const key = (time: number, variant: string) => ({ time, variant })
+	const exported = (loop: 'once' | 'loop' | 'hold', keys: ReturnType<typeof key>[], ticks: number) => {
+		const calls = variantCalls(loop, ticks, keys)
+		const states: string[] = []
+		let worn: Worn = new Map()
+		for (let pass = 0; pass < 2; pass++)
+			for (let tick = 0; tick <= ticks; tick++) {
+				if (calls.has(tick)) worn = callVariant(worn, calls.get(tick)!, excluded, bones)
+				if (pass === 1) states.push(bones.map((b) => worn.get(b) ?? 'default').join(' '))
+			}
+		return states
+	}
+	const previewed = (loop: 'once' | 'loop' | 'hold', keys: ReturnType<typeof key>[], ticks: number) =>
+		Array.from({ length: ticks + 1 }, (_, tick) => {
+			const { byBone } = plan({ loop, keys, ticks, length: ticks / 20, time: tick / 20 })
+			return bones.map((b) => byBone[b]).join(' ')
+		})
+
+	test('of two keyframes on one tick, only the later one is followed', () => {
+		const keys = [key(0.5, 'bodyV'), key(0.52, 'faceV')]
+		expect(plan({ keys, time: 1 }).byBone).toEqual({ body: 'default', face: 'faceV' })
+		expect(plan({ keys, time: 0.5 }).byBone).toEqual({ body: 'default', face: 'faceV' })
+	})
+
+	test('a loop with keyframes on tick 0 and on the last tick follows tick 0 and ignores the last tick', () => {
+		const keys = [key(0, 'bodyV'), key(2, 'faceV')]
+		expect(plan({ loop: 'loop', keys, time: 1 }).byBone).toEqual({ body: 'bodyV', face: 'default' })
+		expect(plan({ loop: 'loop', keys, time: 2 }).byBone).toEqual({ body: 'bodyV', face: 'default' })
+		expect(plan({ loop: 'hold', keys, time: 2 }).byBone).toEqual({ body: 'bodyV', face: 'faceV' })
+	})
+
+	test('a loop with a keyframe on the last tick and none on tick 0 follows it from tick 0', () => {
+		const keys = [key(0.5, 'bodyV'), key(2, 'faceV')]
+		expect(plan({ loop: 'loop', keys, time: 0 }).byBone).toEqual({ body: 'bodyV', face: 'faceV' })
+		expect(plan({ loop: 'loop', keys, time: 0.5 }).byBone).toEqual({ body: 'bodyV', face: 'faceV' })
+	})
+
+	test('a keyframe on the last tick of an animation whose length is not a whole number of ticks is followed at its end', () => {
+		expect(plan({ keys: [key(1.03, 'bodyV')], length: 1.03, ticks: 21, time: 1.03 }).byBone).toEqual({ body: 'bodyV', face: 'default' })
+		expect(plan({ keys: [key(1.03, 'bodyV'), key(0.5, 'faceV')], length: 1.03, ticks: 21, time: 1.02 }).byBone).toEqual({ body: 'bodyV', face: 'faceV' })
+	})
+
+	test('on every tick, each bone wears what the frame functions leave it wearing', () => {
+		const layouts: [string, 'once' | 'loop' | 'hold', ReturnType<typeof key>[]][] = [
+			['two keyframes on one tick', 'hold', [key(0.5, 'bodyV'), key(0.52, 'faceV'), key(1.5, 'bodyV')]],
+			['both ends of a loop', 'loop', [key(0, 'bodyV'), key(2, 'faceV')]],
+			['the last tick of a loop alone', 'loop', [key(0.5, 'bodyV'), key(2, 'faceV')]],
+			['a loop that goes back to default', 'loop', [key(0.25, 'bodyV'), key(0.5, 'faceV'), key(1, 'default'), key(1.01, 'bodyV'), key(2, 'default')]],
+			['a keyframe past the end', 'once', [key(0.5, 'faceV'), key(3, 'bodyV')]],
+		]
+		for (const [name, loop, keys] of layouts) expect({ name, shown: previewed(loop, keys, 40) }).toEqual({ name, shown: exported(loop, keys, 40) })
 	})
 
 	test('a keyframe or a choice naming a variant that is gone draws the original model', () => {

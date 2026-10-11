@@ -1,3 +1,4 @@
+import { tickCount } from '../bake/sample'
 import { isRigelProject } from '../easing/keyframes'
 import { variantTimeline, showVariantTrack } from './keyframes'
 import { viewPlan } from './keys'
@@ -60,6 +61,9 @@ function plan(project: ModelProject): Shown {
 	const { byBone, other, headline } = viewPlan({
 		painting: Modes.paint,
 		keys: animation ? variantTimeline(animation) : [],
+		loop: animation ? animation.loop : 'once',
+		length: animation ? animation.length : 0,
+		ticks: animation ? tickCount(animation) : 0,
 		time: animation ? animation.time : 0,
 		bones: Group.all.filter((g) => g.children.some((c) => c instanceof Cube)).map((g) => g.uuid),
 		excluded: new Map(variants.map((v) => [v.uuid, new Set(v.excluded)])),

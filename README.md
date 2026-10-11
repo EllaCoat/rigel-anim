@@ -58,6 +58,7 @@ Blockbench で作ったモデルとアニメーションを、Minecraft Java Edi
 - 「Variants」パネルの「再生位置に置く」は、パネルで選んでいる variant の keyframe を再生位置に置く。そこに keyframe があれば、その variant を替える。トラックの「+」でも置ける。
 - keyframe の variant を替えるときは、keyframe をタイムラインか、パネルの keyframe の一覧で選び、パネルの一覧で variant を選ぶ。
 - keyframe があるアニメーションでは、再生とスクラブで、Bone ごとに表示する variant を決める。Bone は、再生位置以前にある keyframe のうち、その Bone に適用するものの最後の variant を表示する。`default` はすべての Bone に適用する。顔だけに適用する variant の keyframe が、体に適用する variant の keyframe より後ろにあっても、体は体の variant のままで、書き出しの結果と同じになる。再生位置以前にその Bone に適用する keyframe がないときは、アニメーション全体で最後のものを使う。ループで持ち越す姿勢と同じ考え方だ。どの keyframe もその Bone に適用しないときは、パネルで選んだ variant を表示する。その variant が Bone を外していれば、元の見た目になる。
+- プレビューは、keyframe を書き出しと同じ規則で絞ってから、この決め方を当てる。時刻は tick に丸め、同じ tick に複数あれば後ろの 1 つだけを使い、ループの最後の tick にある keyframe も書き出しと同じに扱う（下の「書き出すと」以降）。
 - keyframe が 1 つもないアニメーションと、アニメーション以外の画面では、パネルで選んだ variant を、外していない Bone に表示する。
 - トラックの目のアイコンで切るミュートは、プレビューだけに効く。書き出しには、ミュートした keyframe も含まれる。
 - keyframe は、variant を改名しても外れない。variant を削除しても、その variant を指す keyframe は残る。存在しない variant を指す keyframe があると、書き出しはそれを知らせて止まる。

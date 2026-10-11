@@ -1,3 +1,6 @@
+import { TICKS_PER_SECOND } from '../bake/sample'
+import type { Loop } from '../export/types'
+import { variantCalls } from '../export/variant-keys'
 import { DEFAULT_VARIANT_ID } from './settings'
 
 export interface TimedVariant {
@@ -38,6 +41,9 @@ export function variantPerBone(
 export interface ViewInput {
 	painting: boolean
 	keys: readonly TimedVariant[]
+	loop: Loop
+	length: number
+	ticks: number
 	time: number
 	bones: readonly string[]
 	excluded: ReadonlyMap<string, ReadonlySet<string>>
@@ -50,10 +56,11 @@ export interface ViewPlan {
 	headline: string
 }
 
-export function viewPlan({ painting, keys, time, bones, excluded, chosen }: ViewInput): ViewPlan {
+export function viewPlan({ painting, keys, loop, length, ticks, time, bones, excluded, chosen }: ViewInput): ViewPlan {
 	const known = (variant: string) => (variant === DEFAULT_VARIANT_ID || excluded.has(variant) ? variant : DEFAULT_VARIANT_ID)
 	if (painting) return { byBone: new Map(bones.map((b) => [b, DEFAULT_VARIANT_ID])), other: DEFAULT_VARIANT_ID, headline: DEFAULT_VARIANT_ID }
-	const timeline = keys.map((k) => ({ time: k.time, variant: known(k.variant) }))
+	const calls = variantCalls(loop, ticks, keys.map((k) => ({ time: k.time, variant: known(k.variant) })))
+	const timeline = [...calls].map(([tick, variant]) => ({ time: Math.min(tick / TICKS_PER_SECOND, length), variant }))
 	const headline = variantAt(timeline, time) ?? known(chosen)
 	return { byBone: variantPerBone(timeline, time, bones, excluded, known(chosen)), other: headline, headline }
 }

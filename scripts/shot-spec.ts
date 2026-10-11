@@ -2,10 +2,9 @@
 // No Node imports: shot-harness.ts bundles this file for the Blockbench renderer.
 export type Vec3 = [number, number, number]
 
-// An animation of the spec's model at a tick: Blockbench shows it, and Minecraft gets the rig's frame
-// functions up to that tick. With `play`, Minecraft plays the animation on a frozen server and steps to the
-// tick instead, so the client shows what interpolation makes of it (as a thinned rig needs); `pause` pauses
-// at frame `at`, waits `hold` ticks and, when `tick` is later, restarts and steps on to it.
+// An animation at a tick: Blockbench shows it, and Minecraft calls the rig's frame functions up to the tick. With
+// `play`, Minecraft plays it on a frozen server and steps to the tick, so the client shows what interpolation makes
+// of it, as a thinned rig needs. `pause` pauses at frame `at` for `hold` ticks, then restarts if `tick` is later.
 export interface Pose {
 	animation: string
 	tick: number
@@ -144,19 +143,18 @@ export function poseCommands(spec: Spec, animations: { name: string; length: num
 	if (index < 0) fail(`views ${view.name}: the model has no animation "${view.pose.animation}"`)
 	const last = Math.max(0, Math.ceil(animations[index]!.length * TICKS_PER_SECOND - 1e-9))
 	const tick = Math.min(view.pose.tick, last)
-	// Without play the frames are called at once, which shows the pose only for a rig exported without thinning.
 	if (!view.pose.play) return [...thaw, ...Array.from({ length: tick + 1 }, (_, f) => `${call(`frames/${index}/${f}`)} with storage rigel:const FrameArgs`)]
 	// play writes f/0 and the first step keeps it (same game time), so frame t needs t + 1 steps.
 	const start = ['tick freeze', call('stop'), `${call('play')} {ID:${index}}`]
-	// A frozen client ticks entities only while the server steps, and the writes of the last step reach it after its
-	// last tick. One more step with the frames stopped (Rigel.Playing 0, unlike stop and pause, writes nothing) shows them.
+	// A frozen client ticks entities only during server steps, and the last step's writes arrive after its last tick.
+	// One more step with Rigel.Playing 0, which writes nothing unlike stop and pause, shows them.
 	const playing = (n: number) => `scoreboard players set $Rigel.${spec.rig} Rigel.Playing ${n}`
 	const settle = [playing(0), 'tick step 1']
 	const pause = view.pose.pause
 	if (!pause) return [...start, `tick step ${tick + 1}`, ...settle]
 	const at = Math.min(pause.at, tick)
-	// pause holds the pose the client shows, so the client first catches up with frame `at`. restart's writes start with
-	// those of the next frame, which the rig's tick function writes at once; then one step per frame.
+	// pause holds the pose the client shows, so the client first catches up with frame `at`. After restart, calling
+	// the rig's tick function writes the next frame at once; then one step per frame.
 	const left = tick - at
 	const resume = left > 0 ? [call('restart'), call('tick'), ...(left > 1 ? [`tick step ${left - 1}`] : [])] : []
 	return [...start, `tick step ${at + 1}`, ...settle, playing(1), call('pause'), ...(pause.hold > 0 ? [`tick step ${pause.hold}`] : []), ...resume, ...settle]

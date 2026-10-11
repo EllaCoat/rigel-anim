@@ -41,8 +41,7 @@ export interface FrameWrite {
 	duration: number
 }
 
-// One bone's runs: the frames they end at, from 0 to the last frame, and the ends of one-tick runs the client jumps
-// to without interpolating.
+// One bone's runs: the frames they end at, from 0 to the last frame, and the ends of runs written without interpolating.
 export interface Runs {
 	ends: number[]
 	snaps: number[]

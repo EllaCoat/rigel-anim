@@ -149,8 +149,6 @@ function within(a: Split, b: Split, t: number, truth: ArrayLike<number>, positio
 	return hidden || Math.hypot(m[12]! - truth[3]!, m[13]! - truth[7]!, m[14]! - truth[11]!) <= position
 }
 
-// How far one matrix is from another, in the measures of `within`: the largest column change relative to the column's
-// length, and the translation change.
 function change(a: ArrayLike<number>, b: ArrayLike<number>): { rotation: number; position: number } {
 	let rotation = 0
 	for (let c = 0; c < 3; c++) {
@@ -160,21 +158,11 @@ function change(a: ArrayLike<number>, b: ArrayLike<number>): { rotation: number;
 	return { rotation, position: Math.hypot(a[3]! - b[3]!, a[7]! - b[7]!, a[11]! - b[11]!) }
 }
 
-// A client that takes in the writes of several ticks between two of its ticks (packets bunching up, a slow frame, a
-// server catching up) applies only the last, and starts its run from the pose it drew last. The writes of up to this
-// many ticks at once keep the pose right.
 // ponytail: writes of 4+ ticks at once (a frame stuck ~150 ms) can show a hidden bone shrinking over a run; raise if seen.
 const MERGED = 3
 
-// One bone's runs (see Runs). The run from k to j is one write at frame k + 1 with the pose of frame j, interpolated
-// over j − k ticks, and covers at most `span` ticks. poses: each frame's written values.
-// When the writes of the one-tick runs right before it are lost, the client starts the run from a pose between where
-// the last one it applied started and ended. The run then has to hold from those starts too, give or take its own
-// largest change in a tick for each lost write, so that a bone hidden or moved at once is not shown going there over
-// the whole run. A one-tick run that ends with the bone hidden is a snap, shown at once: drawn partway, it would pass
-// part of the bone's size on to the next run, and the client starts the run after a snap right at its pose. A bone
-// hidden within the last MERGED ticks, at once or over a run, stays in one-tick runs (snaps). The first runs, whose
-// start is the pose before play or the end of the loop, last one tick.
+// One bone's runs. The run from k to j is one write at frame k + 1 with the pose of frame j, interpolated over j − k
+// ticks, and covers at most `span` ticks. poses: each frame's written values.
 export function runEnds(poses: ArrayLike<number>[], tolerance: Tolerance, span: number): Runs {
 	const radians = tolerance.rotation * DEGREE
 	const splits = poses.map(split)

@@ -1,8 +1,15 @@
+import { registerDisplayPreview, unregisterDisplayPreview } from './display/preview'
+import { registerDisplaySettings, unregisterDisplaySettings } from './display/settings'
+import { registerDisplayUi, unregisterDisplayUi } from './display/ui'
 import { registerEasingKeyframes, unregisterEasingKeyframes } from './easing/keyframes'
 import { registerEasingUi, unregisterEasingUi } from './easing/ui'
 import { registerExportSettings, unregisterExportSettings } from './export/settings'
 import { registerExportUi, unregisterExportUi } from './export/ui'
 import { registerFormat, unregisterFormat } from './format'
+import { registerLocatorSettings, unregisterLocatorSettings } from './locator/settings'
+import { registerLocatorUi, unregisterLocatorUi } from './locator/ui'
+import { registerVariantSettings, unregisterVariantSettings } from './variant/settings'
+import { registerVariantUi, unregisterVariantUi } from './variant/ui'
 
 const PLUGIN_ID = 'rigel'
 const VERSION = '0.0.0'
@@ -20,10 +27,24 @@ BBPlugin.register(PLUGIN_ID, {
 		registerEasingKeyframes()
 		registerEasingUi()
 		registerExportSettings()
+		registerVariantSettings()
+		registerDisplaySettings()
+		registerLocatorSettings()
 		registerExportUi()
+		registerVariantUi()
+		registerDisplayUi()
+		registerLocatorUi()
+		registerDisplayPreview()
 	},
 	onunload() {
+		unregisterDisplayPreview()
+		unregisterLocatorUi()
+		unregisterDisplayUi()
+		unregisterVariantUi()
 		unregisterExportUi()
+		unregisterLocatorSettings()
+		unregisterDisplaySettings()
+		unregisterVariantSettings()
 		unregisterExportSettings()
 		unregisterEasingUi()
 		unregisterEasingKeyframes()

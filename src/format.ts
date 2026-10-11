@@ -13,6 +13,7 @@ export function registerFormat(): void {
 		show_on_start_screen: true,
 		model_identifier: false,
 		bone_rig: true,
+		locators: true,
 		centered_grid: true,
 		rotate_cubes: true,
 		rotation_limit: true,

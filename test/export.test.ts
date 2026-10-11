@@ -153,16 +153,22 @@ describe('frames', () => {
 })
 
 describe('data pack', () => {
-	const animation = (name: string, loop: Loop, priority: WarmPriority, poses: string[][], ends?: (bone: number) => number[]) => ({ name, loop, priority, poses, frames: planFrames(loop, poses, ends && ((b) => ({ ends: ends(b), snaps: [] }))) })
-	const input =(overrides: Partial<RigPackInput> = {}): RigPackInput => ({
+	const animation = (name: string, loop: Loop, priority: WarmPriority, poses: string[][], ends?: (bone: number) => number[]) => ({
+		name,
+		loop,
+		priority,
+		poses,
+		frames: planFrames(loop, poses, ends && ((b) => ({ ends: ends(b), snaps: [] }))),
+		locators: poses.map(() => []),
+	})
+	const bone = (cmd: number, rest: string) => ({ nbt: `id:"minecraft:item_display",item:{id:"minecraft:white_dye",Count:1b,tag:{CustomModelData:${cmd}}}`, rest })
+	const input = (overrides: Partial<RigPackInput> = {}): RigPackInput => ({
 		rig: 'axia',
 		id: 0x1a2b3c4d,
-		item: 'minecraft:white_dye',
 		chunkLines: 3,
-		bones: [
-			{ cmd: 4, rest: 'r0' },
-			{ cmd: 5, rest: 'r1' },
-		],
+		passengers: [bone(4, 'r0'), bone(5, 'r1')],
+		locators: [],
+		variants: [],
 		animations: [
 			animation('idle', 'loop', 'high', [['a', 'b'], ['a', 'B'], ['A', 'B']]),
 			animation('swing', 'once', 'xhigh', [['c', 'd'], ['C', 'd']]),
@@ -218,7 +224,7 @@ describe('data pack', () => {
 		const spawn = lines(files, fn('spawn'))
 		expect(spawn[0]).toBe('execute if entity 1a2b3c4d-0-0-0-0 run return fail')
 		expect(spawn[1]).toContain('UUID:[I;439041101,0,0,0]')
-		expect(spawn[1]).toContain('UUID:[I;439041101,0,0,2],Tags:["rigel","rigel.axia"],item:{id:"minecraft:white_dye",Count:1b,tag:{CustomModelData:5}},interpolation_duration:1,transformation:[r1,0f,0f,0f,1f]}')
+		expect(spawn[1]).toContain('{id:"minecraft:item_display",item:{id:"minecraft:white_dye",Count:1b,tag:{CustomModelData:5}},UUID:[I;439041101,0,0,2],Tags:["rigel","rigel.axia"],interpolation_duration:1,transformation:[r1,0f,0f,0f,1f]}')
 		expect(lines(files, fn('tp'))).toEqual(['tp 1a2b3c4d-0-0-0-0 ~ ~ ~ ~ ~', 'execute as 1a2b3c4d-0-0-0-0 on passengers run tp @s ~ ~ ~ ~ ~'])
 	})
 
@@ -267,7 +273,7 @@ describe('data pack', () => {
 		test('a snap sets the interpolation length to 0', () => {
 			const poses = [['a', 'b'], ['a', 'B'], ['A', 'X']]
 			const frames = planFrames('hold', poses, (b) => (b === 1 ? { ends: [0, 2], snaps: [] } : { ends: [0, 1, 2], snaps: [2] }))
-			const snapped = rigPack(input({ animations: [{ name: 'idle', loop: 'hold', priority: 'high', poses, frames }] }))
+			const snapped = rigPack(input({ animations: [{ name: 'idle', loop: 'hold', priority: 'high', poses, frames, locators: poses.map(() => []) }] }))
 			expect(lines(snapped, fn('frames/0/2')).slice(1)).toEqual([write(1, 'interpolation_duration:0,', 'A'), 'scoreboard players set $Rigel.axia Rigel.Playing 0'])
 		})
 
@@ -367,11 +373,22 @@ describe('settings', () => {
 function source(): RigSource {
 	const identity = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
 	const moved = (y: number) => identity.map((v, i) => (i === 13 ? y : v))
-	const animation: AnimationSource = { name: 'bob', loop: 'loop', ticks: 2, priority: 'high', thin: 'project', matrices: Float64Array.from([...moved(0), ...moved(0.5), ...moved(0)]) }
+	const animation: AnimationSource = {
+		name: 'bob',
+		loop: 'loop',
+		ticks: 2,
+		priority: 'high',
+		thin: 'project',
+		matrices: Float64Array.from([...moved(0), ...moved(0.5), ...moved(0)]),
+		locators: new Float64Array(),
+	}
 	return {
 		bones: [{ name: 'Body', pivot: [0, 0, 0], cubes: [cube([-4, 0, -4], [4, 8, 4])] }],
 		textures: [TEXTURE],
 		rest: Float64Array.from(identity),
+		locators: [],
+		locatorRest: new Float64Array(),
+		variants: [],
 		animations: [animation],
 	}
 }

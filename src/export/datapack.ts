@@ -36,13 +36,44 @@ function objectives(): string[] {
 	return OBJECTIVES.map((o) => `scoreboard objectives add ${o} dummy`)
 }
 
+export interface PassengerInput {
+	// The summon compound's keys without UUID, Tags and the transformation.
+	nbt: string
+	// Displays get a tag with their name so other packs can select them.
+	name?: string
+	rest: string
+}
+
+export interface LocatorInput {
+	name: string
+	entity?: { type: string; nbt: string }
+	// x,y,z as locatorString writes it.
+	rest: string
+}
+
+export interface VariantInput {
+	name: string
+	// Passenger indices and the CustomModelData each gets.
+	writes: { passenger: number; cmd: number }[]
+	onApply: string
+}
+
 export interface RigPackInput {
 	rig: string
 	id: number
-	item: string
 	chunkLines: number
-	bones: { cmd: number; rest: string }[]
-	animations: { name: string; loop: Loop; priority: WarmPriority; poses: Poses; frames: FrameWrite[][] }[]
+	passengers: PassengerInput[]
+	locators: LocatorInput[]
+	variants: VariantInput[]
+	animations: {
+		name: string
+		loop: Loop
+		priority: WarmPriority
+		poses: Poses
+		frames: FrameWrite[][]
+		// [frame][locator]: x,y,z, with a loop's last frame already showing frame 0.
+		locators: string[][]
+	}[]
 }
 
 const hasRuns = (a: RigPackInput['animations'][number]) => a.frames.some((writes) => writes.some((w) => w.duration > 1))
@@ -68,6 +99,16 @@ export function rigPack(p: RigPackInput): Files {
 	// A changed shadow_strength (not drawn while shadow_radius is 0) restarts the client's interpolation from the
 	// pose it shows (Display.createInterpolatedRenderState), and HOLD keeps it there.
 	const hold = `execute as ${root} on passengers run data merge entity @s {shadow_strength:.999f,interpolation_duration:${HOLD},start_interpolation:0}`
+	const tags = `"rigel","rigel.${p.rig}"`
+	const locatorEntity = (l: number) => uuidString(p.id, p.passengers.length + 1 + l)
+	const storage = `rigel:${p.rig}`
+	const placeLocator = (l: number, at: string) => {
+		const locator = p.locators[l]!
+		const [x, y, z] = at.split(',')
+		const lines = [`data modify storage ${storage} Locators.${locator.name} set value {x:${x}d,y:${y}d,z:${z}d}`]
+		if (locator.entity) lines.push(`execute at ${root} run tp ${locatorEntity(l)} ^${x} ^${y} ^${z} ~ ~`)
+		return lines
+	}
 
 	files.set(MARKER, json({ generator: 'rigel', rig: p.rig, id: hexId(p.id) }))
 	files.set('pack.mcmeta', json({ pack: { pack_format: PACK_FORMAT, description: `rigel: ${p.rig}` } }))
@@ -83,6 +124,9 @@ export function rigPack(p: RigPackInput): Files {
 		animation.frames.forEach((writes, f) => {
 			const lines = [warmingCheck]
 			for (const w of writes) lines.push(`$data merge entity ${bone(w.bone)} {${head(f, w, runs)}transformation:[${animation.poses[w.pose]![w.bone]}${tail(f)}`)
+			animation.locators[f]?.forEach((at, l) => {
+				if (f === 0 || at !== animation.locators[f - 1]![l]) lines.push(...placeLocator(l, at))
+			})
 			if (f === last) {
 				if (animation.loop === 'loop' && last > 0) lines.push(`scoreboard players set ${self} Rigel.Frame 0`)
 				else if (animation.loop !== 'once') lines.push(`scoreboard players set ${self} Rigel.Playing 0`)
@@ -163,24 +207,63 @@ export function rigPack(p: RigPackInput): Files {
 			'data merge entity @s {shadow_strength:1f,start_interpolation:0}',
 		])
 
-	const tags = `"rigel","rigel.${p.rig}"`
-	const passengers = p.bones.map(
-		(b, i) =>
-			`{id:"minecraft:item_display",UUID:${uuidNbt(p.id, i + 1)},Tags:[${tags}],item:{id:"${p.item}",Count:1b,tag:{CustomModelData:${b.cmd}}},interpolation_duration:1,transformation:[${b.rest},0f,0f,0f,1f]}`,
+	const passengers = p.passengers.map(
+		(e, i) =>
+			`{${e.nbt},UUID:${uuidNbt(p.id, i + 1)},Tags:[${tags}${e.name ? `,"rigel.${p.rig}.${e.name}"` : ''}],interpolation_duration:1,transformation:[${e.rest},0f,0f,0f,1f]}`,
 	)
+	const entityLocators = p.locators.flatMap((l, i) => (l.entity ? [{ ...l, entity: l.entity, i }] : []))
+	const restLocators = p.locators.map((l) => {
+		const [x, y, z] = l.rest.split(',')
+		return `${l.name}:{x:${x}d,y:${y}d,z:${z}d}`
+	})
 	write('spawn', [
 		`execute if entity ${root} run return fail`,
 		`summon item_display ~ ~ ~ {UUID:${uuidNbt(p.id, 0)},Tags:[${tags},"rigel.root"],Passengers:[${passengers.join(',')}]}`,
+		...(p.locators.length > 0 ? [`data modify storage ${storage} Locators set value {${restLocators.join(',')}}`] : []),
+		...entityLocators.flatMap((l) => {
+			const uuid = locatorEntity(l.i)
+			const nbt = l.entity.nbt.trim().slice(1, -1).trim()
+			return [
+				`execute at ${root} run summon ${l.entity.type} ~ ~ ~ {UUID:${uuidNbt(p.id, p.passengers.length + 1 + l.i)}${nbt ? `,${nbt}` : ''}}`,
+				...['rigel', `rigel.${p.rig}`, `rigel.${p.rig}.${l.name}`].map((t) => `tag ${uuid} add ${t}`),
+			]
+		}),
 		`function ${id('tp')}`,
 		`scoreboard players set ${self} Rigel.Playing 0`,
 	])
-	// Passengers move with the root; their facing is their own.
-	write('tp', [`tp ${root} ~ ~ ~ ~ ~`, `execute as ${root} on passengers run tp @s ~ ~ ~ ~ ~`])
-	write('kill', [`execute as ${root} on passengers run kill @s`, `kill ${root}`, `scoreboard players set ${self} Rigel.Playing 0`])
-	write(
-		'rest',
-		p.bones.map((b, i) => `data merge entity ${bone(i)} {${thin ? 'interpolation_duration:1,' : ''}transformation:[${b.rest},0f,0f,0f,1f]${thin ? '' : ',start_interpolation:0'}}`),
-	)
+	// Passengers move with the root; their facing is their own. Locator entities ride nothing, so they are placed again.
+	write('tp', [
+		`tp ${root} ~ ~ ~ ~ ~`,
+		`execute as ${root} on passengers run tp @s ~ ~ ~ ~ ~`,
+		...entityLocators.map((l) => `function ${id(`locator/${l.name}/place`)} with storage ${storage} Locators.${l.name}`),
+	])
+	for (const l of entityLocators) write(`locator/${l.name}/place`, [`$execute at ${root} run tp ${locatorEntity(l.i)} ^$(x) ^$(y) ^$(z) ~ ~`])
+	write('kill', [
+		`execute as ${root} on passengers run kill @s`,
+		...entityLocators.map((l) => `kill ${locatorEntity(l.i)}`),
+		`kill ${root}`,
+		`scoreboard players set ${self} Rigel.Playing 0`,
+	])
+	write('rest', [
+		...p.passengers.map((e, i) => `data merge entity ${bone(i)} {${thin ? 'interpolation_duration:1,' : ''}transformation:[${e.rest},0f,0f,0f,1f]${thin ? '' : ',start_interpolation:0'}}`),
+		...p.locators.flatMap((l, i) => placeLocator(i, l.rest)),
+	])
+
+	for (const v of p.variants)
+		write(`variant/${v.name}`, [
+			`execute unless entity ${root} run return fail`,
+			...v.writes.map((w) => `data merge entity ${bone(w.passenger)} {item:{tag:{CustomModelData:${w.cmd}}}}`),
+			...(v.onApply ? [`function ${v.onApply}`] : []),
+		])
+
+	for (const l of p.locators)
+		write(`at_locator/${l.name}`, [
+			`data modify storage ${storage} At set from storage ${storage} Locators.${l.name}`,
+			`$data modify storage ${storage} At.function set value "$(function)"`,
+			`function ${id('locator/at')} with storage ${storage} At`,
+		])
+	// @s stays the caller; the rotation is the rig's.
+	if (p.locators.length > 0) write('locator/at', [`$execute at ${root} positioned ^$(x) ^$(y) ^$(z) run function $(function)`])
 	return files
 }
 

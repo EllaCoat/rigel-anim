@@ -30,15 +30,26 @@ export function readBoneMatrices(bones: Group[], out: Float64Array, offset: numb
 	})
 }
 
+// Each locator's position relative to the model root, in blocks, 3 values per locator.
+export function readLocatorPositions(locators: Locator[], out: Float64Array, offset: number): void {
+	const inverse = Project!.model_3d.matrixWorld.clone().invert()
+	const m = inverse.clone()
+	locators.forEach((locator, i) => {
+		m.multiplyMatrices(inverse, locator.mesh.matrixWorld)
+		for (let k = 0; k < 3; k++) out[offset + i * 3 + k] = m.elements[12 + k]! / PIXELS_PER_BLOCK
+	})
+}
+
 // Rounded up so the last tick reaches the end of the animation (it is clamped to the length).
 export function tickCount(animation: BBAnimation): number {
 	return Math.max(0, Math.ceil(animation.length * TICKS_PER_SECOND - 1e-9))
 }
 
 // Each tick's pose comes from the same calls the preview makes for one animation.
-export function sampleAnimation(animation: BBAnimation, bones: Group[]): Float64Array {
+export function sampleAnimation(animation: BBAnimation, bones: Group[], locators: Locator[]): { matrices: Float64Array; locators: Float64Array } {
 	const ticks = tickCount(animation)
 	const matrices = new Float64Array((ticks + 1) * bones.length * 16)
+	const positions = new Float64Array((ticks + 1) * locators.length * 3)
 	const time = Timeline.time
 	try {
 		for (let i = 0; i <= ticks; i++) {
@@ -47,10 +58,11 @@ export function sampleAnimation(animation: BBAnimation, bones: Group[]): Float64
 			Animator.showDefaultPose(true)
 			;(Animator as unknown as Stackable).stackAnimations([animation], false)
 			readBoneMatrices(bones, matrices, i * bones.length * 16)
+			readLocatorPositions(locators, positions, i * locators.length * 3)
 		}
 	} finally {
 		Timeline.time = time
 		Animator.preview()
 	}
-	return matrices
+	return { matrices, locators: positions }
 }

@@ -26,6 +26,19 @@ export function poseString(m: ArrayLike<number>, at: number, k: number): string 
 	return entityValues(m, at, k).map((v) => formatFloat(v, digits)).join(',')
 }
 
+// Display entities draw from their own origin without the item model's half turn: the bone matrix times the display's scale.
+export function displayPoseString(m: ArrayLike<number>, at: number, scale: readonly number[]): string {
+	const digits = digitsFor(Math.max(...scale.map(Math.abs)))
+	const v: number[] = []
+	for (let r = 0; r < 3; r++) v.push(scale[0]! * m[at + r]!, scale[1]! * m[at + 4 + r]!, scale[2]! * m[at + 8 + r]!, m[at + 12 + r]!)
+	return v.map((x) => formatFloat(x, digits)).join(',')
+}
+
+// x,y,z in blocks without a type suffix; the rig's frame maps to ^x ^y ^z unchanged.
+export function locatorString(p: ArrayLike<number>, at: number): string {
+	return [0, 1, 2].map((i) => formatFloat(p[at + i]!, BASE_DIGITS).slice(0, -1)).join(',')
+}
+
 // poses[f][b]: the 12 values of renderable bone b at frame f.
 export type Poses = string[][]
 

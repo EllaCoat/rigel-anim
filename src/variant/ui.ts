@@ -30,14 +30,16 @@ export function previewVariant(variant: StoredVariant | undefined): void {
 }
 
 interface Editable {
+	uuid: string
 	name: string
 	pairs: { from: string; to: string }[]
 	excluded: string[]
 	onApply: string
 }
 
-const editable = (v: StoredVariant): Editable => ({ name: v.name, pairs: v.textures.map(([from, to]) => ({ from, to })), excluded: [...v.excluded], onApply: v.onApply })
+const editable = (v: StoredVariant): Editable => ({ uuid: v.uuid, name: v.name, pairs: v.textures.map(([from, to]) => ({ from, to })), excluded: [...v.excluded], onApply: v.onApply })
 const stored = (v: Editable): StoredVariant => ({
+	uuid: v.uuid,
 	name: v.name.trim(),
 	textures: v.pairs.filter((p) => p.from && p.to && p.from !== p.to).map((p): [string, string] => [p.from, p.to]),
 	excluded: [...v.excluded],
@@ -76,7 +78,7 @@ function openVariantDialog(): void {
 			methods: {
 				add() {
 					const self = this as any
-					self.variants.push({ name: `variant_${self.variants.length + 1}`, pairs: [{ from: '', to: '' }], excluded: [], onApply: '' })
+					self.variants.push({ uuid: crypto.randomUUID(), name: `variant_${self.variants.length + 1}`, pairs: [{ from: '', to: '' }], excluded: [], onApply: '' })
 					self.index = self.variants.length - 1
 				},
 				remove() {

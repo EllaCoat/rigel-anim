@@ -1,6 +1,8 @@
 // Exports the synthetic rig (synthetic-rig.ts) from the development Blockbench and checks the data packs on
 // a 1.20.4 server: they load without errors, the calls behave as designed, every tick of every animation
-// leaves each bone at the pose Blockbench sampled, and two rigs warm one chunk per tick, by priority.
+// leaves each bone at the pose Blockbench sampled, and two rigs warm one chunk per tick, by priority. A third,
+// thinned rig is checked against its planned writes: each bone holds the end of its current run with the run's
+// length, and pause, stop and restart set the values that hold and resume the client's interpolation.
 //
 //   bun scripts/export-check.ts [--shots <dir>]
 //
@@ -14,8 +16,9 @@ import { join, resolve } from 'node:path'
 import { SERVER_DIR, Server } from '../bench/mc'
 import { compose, type Quat, type Vec3 } from '../src/bake/matrix'
 import { uuidString } from '../src/export/datapack'
-import { poseString } from '../src/export/frames'
+import { planFrames, poseString, type FrameWrite } from '../src/export/frames'
 import { boneScale } from '../src/export/item-model'
+import { animationRunEnds } from '../src/export/thin'
 import type { RigSettings, RigSource } from '../src/export/types'
 import { exportRig, type ExportFs } from '../src/export/write'
 import { blockbenchRunning, devBlockbench, evaluate } from './devtools'
@@ -62,9 +65,25 @@ function expectations(source: RigSource) {
 	return { bones: renderable.length, rest: values(source.rest, 0), frame: (a: number, f: number) => values(source.animations[a]!.matrices, f) }
 }
 
+// The planned writes of each animation of a thinned rig, with the values each pose writes.
+function thinnedPlans(source: RigSource, settings: RigSettings) {
+	const renderable = source.bones.flatMap((b, i) => (b.cubes.length > 0 ? [{ index: i, k: boneScale(b) }] : []))
+	return source.animations.map((a) => {
+		const poses = Array.from({ length: a.ticks + 1 }, (_, f) => renderable.map(({ index, k }) => poseString(a.matrices, (f * source.bones.length + index) * 16, k)))
+		const frames: FrameWrite[][] = planFrames(a.loop, poses, animationRunEnds(a.loop, poses, settings.thin!, settings.span))
+		return { loop: a.loop, ticks: a.ticks, frames, values: poses.map((frame) => frame.map((p) => p.split(',').map((v) => Number.parseFloat(v)))) }
+	})
+}
+
+// What a bone of a thinned rig holds on the server.
+interface Held {
+	values: number[]
+	duration: number
+}
+
 class Check {
 	readonly failures: string[] = []
-	constructor(private server: Server) {}
+	constructor(readonly server: Server) {}
 
 	expect(ok: boolean, message: string): void {
 		if (!ok) this.failures.push(message)
@@ -100,18 +119,29 @@ class Check {
 	}
 
 	async entity(uuid: string, path: string): Promise<string | null> {
-		const m = await this.server.run(`data get entity ${uuid} ${path}`, /has the following entity data: (.*)$|No entity was found|Found no elements matching/)
+		const m = await this.server.run(`data get entity ${uuid}${path ? ` ${path}` : ''}`, /has the following entity data: (.*)$|No entity was found|Found no elements matching/)
 		return m[1] ?? null
 	}
 
 	// The 12 values of the matrix Minecraft rebuilds from the bone's stored transformation.
 	async matrix(uuid: string): Promise<number[] | null> {
 		const nbt = await this.entity(uuid, 'transformation')
-		if (!nbt) return null
-		const list = (key: string) => [...new RegExp(`${key}: \\[([^\\]]*)\\]`).exec(nbt)![1]!.matchAll(/-?[\d.]+(?:E-?\d+)?/g)].map((x) => Number(x[0]))
-		const m = compose(list('translation') as Vec3, list('left_rotation') as Quat, list('scale') as Vec3, list('right_rotation') as Quat)
-		return [0, 1, 2].flatMap((r) => [m[r]!, m[4 + r]!, m[8 + r]!, m[12 + r]!])
+		return nbt ? rebuilt(nbt) : null
 	}
+
+	// The matrix, interpolation length, PortalCooldown and shadow strength a bone holds.
+	async display(uuid: string): Promise<{ matrix: number[]; duration: number; cooldown: number; shadow: number } | null> {
+		const nbt = await this.entity(uuid, '')
+		if (!nbt) return null
+		const number = (key: string) => Number(new RegExp(`\\b${key}: (-?[\\d.]+(?:E-?\\d+)?)`).exec(nbt)![1])
+		return { matrix: rebuilt(nbt), duration: number('interpolation_duration'), cooldown: number('PortalCooldown'), shadow: number('shadow_strength') }
+	}
+}
+
+function rebuilt(nbt: string): number[] {
+	const list = (key: string) => [...new RegExp(`${key}: \\[([^\\]]*)\\]`).exec(nbt)![1]!.matchAll(/-?[\d.]+(?:E-?\d+)?/g)].map((x) => Number(x[0]))
+	const m = compose(list('translation') as Vec3, list('left_rotation') as Quat, list('scale') as Vec3, list('right_rotation') as Quat)
+	return [0, 1, 2].flatMap((r) => [m[r]!, m[4 + r]!, m[8 + r]!, m[12 + r]!])
 }
 
 const maxDiff = (a: number[], b: number[]) => Math.max(...a.map((v, i) => Math.abs(v - b[i]!)))
@@ -126,8 +156,9 @@ async function main(): Promise<void> {
 	// Priorities that exercise the order: 'once' first, 'squash' last.
 	source.animations.forEach((a) => (a.priority = a.name === 'once' ? 'xhigh' : a.name === 'squash' ? 'low' : 'high'))
 	const rigs: RigSettings[] = [
-		{ rig: 'synthetic', id: 0x5e17e000, item: 'minecraft:white_dye', chunkLines: 20 },
-		{ rig: 'twin', id: 0x7e1a0001, item: 'minecraft:white_dye', chunkLines: 20 },
+		{ rig: 'synthetic', id: 0x5e17e000, item: 'minecraft:white_dye', chunkLines: 20, span: 20 },
+		{ rig: 'twin', id: 0x7e1a0001, item: 'minecraft:white_dye', chunkLines: 20, span: 20 },
+		{ rig: 'thinned', id: 0x7e1a0002, item: 'minecraft:white_dye', chunkLines: 20, span: 20, thin: { position: 0.01, rotation: 1 } },
 	]
 
 	const world = join(SERVER_DIR, WORLD_NAME)
@@ -264,6 +295,8 @@ async function main(): Promise<void> {
 		check.expect((await check.score(self, 'Rigel.Playing')) === 0, 'stop did not stop')
 		check.expect((await check.result('function rigel:synthetic/restart')) === 0, 'restart after stop did not fail')
 
+		report.thinned = await checkThinned(check, source, rigs[2]!)
+
 		// tp moves the root (the bones ride along) and turns every bone, pitch included.
 		server.send('execute positioned 10.5 -60.0 3.25 rotated 90 30 run function rigel:synthetic/tp')
 		await server.sync()
@@ -289,6 +322,129 @@ async function main(): Promise<void> {
 	report.failures = check.failures
 	console.log(JSON.stringify(report, null, 1))
 	if (check.failures.length > 0) process.exitCode = 1
+}
+
+const HOLD = 1_000_000_000
+
+// Plays every animation of the thinned rig and compares each bone after each step with the planned writes replayed
+// in the same order; then pauses inside a run, restarts and stops.
+async function checkThinned(check: Check, source: RigSource, settings: RigSettings) {
+	const plans = thinnedPlans(source, settings)
+	const bones = plans[0]!.values[0]!.length
+	const bone = (b: number) => uuidString(settings.id, b + 1)
+	const self = `$Rigel.${settings.rig}`
+	const rest = expectations(source).rest
+	const fn = (name: string) => `function rigel:${settings.rig}/${name}`
+	check.expect((await check.result(`execute positioned 4.0 -60.0 0.0 rotated 0 0 run ${fn('spawn')}`)) !== 0, 'thinned: spawn failed')
+
+	const held: Held[] = rest.map((values) => ({ values, duration: 1 }))
+	const cooldown = rest.map(() => 0)
+	const apply = (a: number, f: number) => {
+		for (const w of plans[a]!.frames[f]!) {
+			held[w.bone] = { values: plans[a]!.values[w.pose]![w.bone]!, duration: w.duration }
+			if (f === 0) cooldown[w.bone] = 0
+			else if (w.duration > 1) cooldown[w.bone] = f + w.duration - 1
+		}
+	}
+	const compare = async (label: string) => {
+		for (let b = 0; b < bones; b++) {
+			const got = await check.display(bone(b))
+			if (!got) {
+				check.failures.push(`${label} bone ${b}: missing`)
+				continue
+			}
+			const d = maxDiff(got.matrix, held[b]!.values)
+			if (d > TOLERANCE) check.failures.push(`${label} bone ${b}: off by ${d.toFixed(4)}`)
+			if (got.duration !== held[b]!.duration) check.failures.push(`${label} bone ${b}: interpolation_duration ${got.duration}, expected ${held[b]!.duration}`)
+			if (got.cooldown !== cooldown[b]) check.failures.push(`${label} bone ${b}: PortalCooldown ${got.cooldown}, expected ${cooldown[b]}`)
+		}
+	}
+
+	let long = 0
+	for (const [a, plan] of plans.entries()) {
+		long += plan.frames.flat().filter((w) => w.duration > 1).length
+		const n = plan.ticks
+		const steps = plan.loop === 'loop' ? 2 * n + 2 : n + 3
+		check.server.send(`${fn('play')} {ID:${a}}`)
+		apply(a, 0)
+		for (let s = 0; s <= steps; s++) {
+			if (s > 0) await check.step()
+			// play wrote f/0, the first step keeps it; then one frame per step, a loop going round from f/n to f/1.
+			if (s >= 2) {
+				const t = s - 1
+				if (plan.loop === 'loop') apply(a, n === 0 ? 0 : ((t - 1) % n) + 1)
+				else if (t <= n) apply(a, t)
+				else if (t === n + 1 && plan.loop === 'once') rest.forEach((values, b) => (held[b] = { values, duration: 1 }))
+			}
+			await compare(`thinned ${a} step ${s}`)
+		}
+		check.server.send(fn('stop'))
+		for (let b = 0; b < bones; b++) held[b] = { ...held[b]!, duration: HOLD }
+	}
+
+	// Pause inside the longest run, hold for two steps, restart to finish the run on time.
+	const runs = plans.flatMap((plan, a) => plan.frames.flatMap((writes, f) => writes.filter((w) => w.duration > 2).map((w) => ({ a, f, w }))))
+	if (runs.length === 0) {
+		check.failures.push('thinned: no run over three ticks to pause in')
+		return { longWrites: long }
+	}
+	const { a, f } = runs.reduce((x, y) => (y.w.duration > x.w.duration ? y : x))
+	check.server.send(`${fn('play')} {ID:${a}}`)
+	apply(a, 0)
+	await check.step()
+	for (let t = 1; t <= f + 1; t++) {
+		await check.step()
+		apply(a, t)
+	}
+	const frame = (await check.score(self, 'Rigel.Frame'))!
+	check.expect(frame === f + 1, `thinned: frame ${frame} before pause, expected ${f + 1}`)
+	check.expect((await check.result(fn('pause'))) !== 0, 'thinned: pause failed')
+	await check.step(2)
+	check.expect((await check.score(self, 'Rigel.Frame')) === frame, 'thinned: pause did not stop the frames')
+	for (let b = 0; b < bones; b++) {
+		const got = (await check.display(bone(b)))!
+		check.expect(got.duration === HOLD && Math.abs(got.shadow - 0.999) < 1e-6, `thinned: pause did not hold bone ${b}`)
+	}
+	check.expect((await check.result(fn('restart'))) !== 0, 'thinned: restart failed')
+	for (let b = 0; b < bones; b++) {
+		const got = (await check.display(bone(b)))!
+		const left = Math.max(1, cooldown[b]! - frame)
+		check.expect(got.duration === left && got.shadow === 1, `thinned: restart gave bone ${b} interpolation_duration ${got.duration} (expected ${left}), shadow ${got.shadow}`)
+	}
+	await check.step()
+	check.expect((await check.score(self, 'Rigel.Frame')) === frame + 1, 'thinned: restart did not continue from the next frame')
+	check.expect((await check.result(fn('stop'))) !== 0, 'thinned: stop failed')
+	for (let b = 0; b < bones; b++) {
+		const got = (await check.display(bone(b)))!
+		check.expect(got.duration === HOLD && Math.abs(got.shadow - 0.999) < 1e-6, `thinned: stop did not hold bone ${b}`)
+	}
+	check.server.send(`${fn('play')} {ID:${a}}`)
+	await check.server.sync()
+	for (let b = 0; b < bones; b++) {
+		const got = (await check.display(bone(b)))!
+		check.expect(got.duration === 1 && got.shadow === 1, `thinned: play after stop left bone ${b} at interpolation_duration ${got.duration}, shadow ${got.shadow}`)
+	}
+
+	// Rigel.Frame is 0 on the tick of play and after a loop's last frame, with every run ended: restart takes one tick.
+	const restartTakesOneTick = async (label: string) => {
+		check.expect((await check.result(fn('pause'))) !== 0, `thinned: pause ${label} failed`)
+		check.expect((await check.result(fn('restart'))) !== 0, `thinned: restart ${label} failed`)
+		for (let b = 0; b < bones; b++) {
+			const got = (await check.display(bone(b)))!
+			check.expect(got.duration === 1, `thinned: restart ${label} gave bone ${b} interpolation_duration ${got.duration}`)
+		}
+		check.server.send(fn('stop'))
+	}
+	await restartTakesOneTick('on the tick of play')
+	const loop = plans.findIndex((plan) => plan.loop === 'loop' && plan.ticks > 0 && plan.frames.flat().some((w) => w.duration > 1))
+	if (loop >= 0) {
+		check.server.send(`${fn('play')} {ID:${loop}}`)
+		await check.step(plans[loop]!.ticks + 1)
+		check.expect((await check.score(self, 'Rigel.Frame')) === 0, `thinned: loop ${loop} did not go round`)
+		await restartTakesOneTick(`after the last frame of loop ${loop}`)
+	}
+	check.server.send(fn('kill'))
+	return { longWrites: long, pausedIn: { animation: a, frame }, wrappedIn: loop }
 }
 
 // Rest pose and poses of each animation, from the front and from a corner, for mc-shot.

@@ -1,5 +1,5 @@
 // Data packs for Minecraft 1.20.4: one per rig (rigel:<rig>/…) and the common pack rigel (rigel:core/…).
-import { planChunks, planFrames, type Poses, type WarmItem } from './frames'
+import { planChunks, type FrameWrite, type Poses, type WarmItem } from './frames'
 import { WARM_PRIORITIES, type Files, type Loop, type WarmPriority } from './types'
 
 export const NAMESPACE = 'rigel'
@@ -14,6 +14,8 @@ const PACK_FORMAT = 26
 const OBJECTIVES = ['Rigel.Frame', 'Rigel.Playing', 'Rigel.PlayedAt', 'Rigel.Warming', 'Rigel.Temp']
 const FRAME_ARGS = 'rigel:const FrameArgs'
 const LIST: Record<WarmPriority, string> = { xhigh: 'XHigh', high: 'High', low: 'Low' }
+// An interpolation this long (ticks, about 1.6 years) does not visibly move.
+const HOLD = 1_000_000_000
 
 const fn = (path: string) => `data/${NAMESPACE}/functions/${path}.mcfunction`
 const json = (value: unknown) => `${JSON.stringify(value, null, '\t')}\n`
@@ -42,8 +44,18 @@ export interface RigPackInput {
 	chunkLines: number
 	// Renderable bones in outliner order.
 	bones: { cmd: number; rest: string }[]
-	animations: { name: string; loop: Loop; priority: WarmPriority; poses: Poses }[]
+	// frames: planFrames of the poses.
+	animations: { name: string; loop: Loop; priority: WarmPriority; poses: Poses; frames: FrameWrite[][] }[]
 }
+
+// Writes that interpolate over more than one tick. Then every write of the rig sets the interpolation length, and
+// stop and pause hold each bone at the pose the client shows: changing shadow_strength (not drawn while shadow_radius
+// is 0) makes the client start a new interpolation from that pose (Display.createInterpolatedRenderState), which a
+// long duration keeps from moving. A write over several ticks keeps the frame its run ends at in PortalCooldown,
+// which display entities neither count down nor send to clients, so restart can finish the run on time.
+// f/0 and rest leave start_interpolation out: restarting the interpolation without changing the pose makes the client
+// replay its last interpolation (Display.tick rebuilds it only when a drawn value changes), from the start of a long run.
+const thinned = (p: RigPackInput) => p.animations.some((a) => a.frames.some((writes) => writes.some((w) => w.duration > 1)))
 
 export function rigPack(p: RigPackInput): Files {
 	const files: Files = new Map()
@@ -53,6 +65,14 @@ export function rigPack(p: RigPackInput): Files {
 	const id = (path: string) => `${NAMESPACE}:${p.rig}/${path}`
 	const write = (path: string, lines: string[]) => files.set(fn(`${p.rig}/${path}`), text(lines))
 	const warmingCheck = `execute if score ${self} Rigel.Warming matches 1 run return 0`
+	const thin = thinned(p)
+	// f/0 also restores the shadow strength stop and pause change.
+	const head = (f: number, w: FrameWrite) =>
+		!thin ? '' : f === 0 ? 'shadow_strength:1f,PortalCooldown:0,interpolation_duration:1,' : w.duration > 1 ? `PortalCooldown:${f + w.duration - 1},interpolation_duration:${w.duration},` : 'interpolation_duration:1,'
+	// The rig's storage holds s, the end of an f/0 write without start_interpolation.
+	const headArgs = thin ? `rigel:${p.rig}` : FRAME_ARGS
+	const tail = (f: number) => (thin && f === 0 ? '$(s)' : '$(_)')
+	const hold = `execute as ${root} on passengers run data merge entity @s {shadow_strength:.999f,interpolation_duration:${HOLD},start_interpolation:0}`
 
 	files.set(MARKER, json({ generator: 'rigel', rig: p.rig, id: hexId(p.id) }))
 	files.set('pack.mcmeta', json({ pack: { pack_format: PACK_FORMAT, description: `rigel: ${p.rig}` } }))
@@ -63,17 +83,16 @@ export function rigPack(p: RigPackInput): Files {
 	const heads: Record<WarmPriority, WarmItem[]> = { xhigh: [], high: [], low: [] }
 	const rests: Record<WarmPriority, WarmItem[]> = { xhigh: [], high: [], low: [] }
 	p.animations.forEach((animation, a) => {
-		const plans = planFrames(animation.loop, animation.poses)
-		const last = plans.length - 1
-		plans.forEach((plan, f) => {
+		const last = animation.frames.length - 1
+		animation.frames.forEach((writes, f) => {
 			const lines = [warmingCheck]
-			for (const b of plan.writes) lines.push(`$data merge entity ${bone(b)} {transformation:[${animation.poses[plan.pose]![b]}$(_)`)
+			for (const w of writes) lines.push(`$data merge entity ${bone(w.bone)} {${head(f, w)}transformation:[${animation.poses[w.pose]![w.bone]}${tail(f)}`)
 			if (f === last) {
 				if (animation.loop === 'loop' && last > 0) lines.push(`scoreboard players set ${self} Rigel.Frame 0`)
 				else if (animation.loop !== 'once') lines.push(`scoreboard players set ${self} Rigel.Playing 0`)
 			}
 			write(`frames/${a}/${f}`, lines)
-			if (plan.writes.length > 0) (f === 0 ? heads : rests)[animation.priority].push({ animation: a, frame: f, lines: plan.writes.length })
+			if (writes.length > 0) (f === 0 ? heads : rests)[animation.priority].push({ animation: a, frame: f, lines: writes.length })
 		})
 		if (animation.loop === 'once') write(`frames/${a}/${last + 1}`, [warmingCheck, `function ${id('rest')}`, `scoreboard players set ${self} Rigel.Playing 0`])
 	})
@@ -85,7 +104,7 @@ export function rigPack(p: RigPackInput): Files {
 		chunks.forEach((chunk, c) => {
 			write(`warm/${priority}/${c}`, [
 				`scoreboard players set ${self} Rigel.Warming 1`,
-				...chunk.map((item) => `function ${id(`frames/${item.animation}/${item.frame}`)} with storage ${FRAME_ARGS}`),
+				...chunk.map((item) => `function ${id(`frames/${item.animation}/${item.frame}`)} with storage ${item.frame === 0 ? headArgs : FRAME_ARGS}`),
 				`scoreboard players set ${self} Rigel.Warming 0`,
 				c + 1 < chunks.length ? `data modify storage ${list}[0].Chunk set value ${c + 1}` : `data remove storage ${list}[0]`,
 				'return 1',
@@ -97,6 +116,7 @@ export function rigPack(p: RigPackInput): Files {
 		...objectives(),
 		...WARM_PRIORITIES.map((priority) => `data remove storage rigel:warm ${LIST[priority]}[{Rig:"${p.rig}"}]`),
 		...registrations,
+		...(thin ? [`data modify storage ${headArgs} s set value ",0f,0f,0f,1f]}"`] : []),
 		`scoreboard players set ${self} Rigel.Warming 0`,
 		...(registrations.length > 0 ? ['scoreboard players set $Rigel.Warm Rigel.Warming 1'] : []),
 	])
@@ -122,11 +142,31 @@ export function rigPack(p: RigPackInput): Files {
 		`scoreboard players set ${self} Rigel.Frame 0`,
 		`scoreboard players set ${self} Rigel.Playing 1`,
 		`execute store result score ${self} Rigel.PlayedAt run time query gametime`,
-		`$function ${id('frames')}/$(ID)/0 with storage ${FRAME_ARGS}`,
+		`$function ${id('frames')}/$(ID)/0 with storage ${headArgs}`,
 	])
-	write('stop', [`scoreboard players set ${self} Rigel.Playing 0`])
-	write('pause', [`execute unless score ${self} Rigel.Playing matches 1 run return fail`, `scoreboard players set ${self} Rigel.Playing 2`])
-	write('restart', [`execute unless score ${self} Rigel.Playing matches 2 run return fail`, `scoreboard players set ${self} Rigel.Playing 1`])
+	write('stop', [`scoreboard players set ${self} Rigel.Playing 0`, ...(thin ? [hold] : [])])
+	write('pause', [`execute unless score ${self} Rigel.Playing matches 1 run return fail`, `scoreboard players set ${self} Rigel.Playing 2`, ...(thin ? [hold] : [])])
+	write('restart', [
+		`execute unless score ${self} Rigel.Playing matches 2 run return fail`,
+		`scoreboard players set ${self} Rigel.Playing 1`,
+		// Rigel.Frame is 0 on the tick of play and after a loop's last frame, when every run has ended.
+		...(thin
+			? [
+					`scoreboard players operation $Rigel.At Rigel.Temp = ${self} Rigel.Frame`,
+					'execute if score $Rigel.At Rigel.Temp matches 0 run scoreboard players set $Rigel.At Rigel.Temp 2147483647',
+					`execute as ${root} on passengers run function ${id('resume')}`,
+				]
+			: []),
+	])
+	// Run as each bone: interpolate from the held pose to the end of its run in the ticks left (1 when it has none).
+	if (thin)
+		write('resume', [
+			'execute store result score $Rigel.Left Rigel.Temp run data get entity @s PortalCooldown',
+			'scoreboard players operation $Rigel.Left Rigel.Temp -= $Rigel.At Rigel.Temp',
+			'execute if score $Rigel.Left Rigel.Temp matches ..0 run scoreboard players set $Rigel.Left Rigel.Temp 1',
+			'execute store result entity @s interpolation_duration int 1 run scoreboard players get $Rigel.Left Rigel.Temp',
+			'data merge entity @s {shadow_strength:1f,start_interpolation:0}',
+		])
 
 	const tags = `"rigel","rigel.${p.rig}"`
 	const passengers = p.bones.map(
@@ -144,7 +184,7 @@ export function rigPack(p: RigPackInput): Files {
 	write('kill', [`execute as ${root} on passengers run kill @s`, `kill ${root}`, `scoreboard players set ${self} Rigel.Playing 0`])
 	write(
 		'rest',
-		p.bones.map((b, i) => `data merge entity ${bone(i)} {transformation:[${b.rest},0f,0f,0f,1f],start_interpolation:0}`),
+		p.bones.map((b, i) => `data merge entity ${bone(i)} {${thin ? 'interpolation_duration:1,' : ''}transformation:[${b.rest},0f,0f,0f,1f]${thin ? '' : ',start_interpolation:0'}}`),
 	)
 	return files
 }

@@ -1,7 +1,7 @@
 // Reads the open project into the plain data the export is generated from.
 import type { Vec3 } from '../bake/matrix'
 import { collectBones, readBoneMatrices, sampleAnimation, tickCount } from '../bake/sample'
-import { getPriority } from './settings'
+import { getPriority, getThin } from './settings'
 import { DIRECTIONS, type CubeSource, type FaceSource, type RigSource, type TextureSource } from './types'
 
 function pngBytes(texture: Texture): Uint8Array {
@@ -72,6 +72,7 @@ export function collectRig(): RigSource {
 				loop: a.loop,
 				ticks: tickCount(a),
 				priority: getPriority(a),
+				thin: getThin(a),
 				matrices: sampleAnimation(a, groups),
 			})),
 		}

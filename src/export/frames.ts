@@ -32,23 +32,33 @@ export function poseString(m: ArrayLike<number>, at: number, k: number): string 
 // poses[f][b]: the 12 values of renderable bone b at frame f.
 export type Poses = string[][]
 
-export interface FramePlan {
-	// Renderable bones the frame function writes.
-	writes: number[]
+export interface FrameWrite {
+	// Renderable bone.
+	bone: number
 	// Frame of `poses` the values come from.
 	pose: number
+	// Ticks the interpolation to the pose takes.
+	duration: number
 }
 
-// f/0 writes every bone; later frames write the bones that changed since the frame before. A loop's
-// last frame goes back to the pose of frame 0, and the next tick plays f/1.
-export function planFrames(loop: Loop, poses: Poses): FramePlan[] {
+// The writes of each frame function, bones in order. f/0 writes every bone. A loop's last frame shows the pose of
+// frame 0, and the next tick plays f/1. Each bone's run from frame k to j (`ends`, every frame by default) is one
+// write at frame k + 1 with the pose of frame j, left out when the bone already has that pose.
+export function planFrames(loop: Loop, poses: Poses, ends?: (bone: number) => number[]): FrameWrite[][] {
 	const last = poses.length - 1
-	const changed = (from: number, to: number) => poses[to]!.flatMap((p, b) => (p === poses[from]![b] ? [] : [b]))
-	return poses.map((pose, f) => {
-		if (f === 0) return { writes: pose.map((_, b) => b), pose: 0 }
-		if (f === last && loop === 'loop') return { writes: changed(f - 1, 0), pose: 0 }
-		return { writes: changed(f - 1, f), pose: f }
-	})
+	const at = (f: number) => (f === last && loop === 'loop' ? 0 : f)
+	const frames: FrameWrite[][] = poses.map(() => [])
+	const bones = poses[0]?.length ?? 0
+	for (let bone = 0; bone < bones; bone++) {
+		frames[0]!.push({ bone, pose: 0, duration: 1 })
+		const runs = ends?.(bone) ?? poses.map((_, f) => f)
+		for (let i = 1; i < runs.length; i++) {
+			const k = runs[i - 1]!
+			const j = runs[i]!
+			if (poses[at(j)]![bone] !== poses[at(k)]![bone]) frames[k + 1]!.push({ bone, pose: at(j), duration: j - k })
+		}
+	}
+	return frames
 }
 
 export interface WarmItem {

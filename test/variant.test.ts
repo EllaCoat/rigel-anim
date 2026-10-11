@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test'
+import { variantCalls, variantCuts } from '../src/export/variant-keys'
 import { DEFAULT_VARIANT_ID, readVariants, writeVariants, type StoredVariant } from '../src/variant/settings'
 
 const project = (rigel_variants: unknown) => ({ rigel_variants, saved: true }) as unknown as ModelProject
@@ -39,5 +40,35 @@ describe('stored variants', () => {
 		v.excluded.push('g')
 		expect(readVariants(p)).toEqual([{ uuid: 'u', name: 'smile', textures: [], excluded: [], onApply: '' }])
 		expect((p as unknown as { saved: boolean }).saved).toBe(false)
+	})
+})
+
+describe('variant calls', () => {
+	const key = (time: number, variant: string) => ({ time, variant })
+
+	test('a keyframe lands on the nearest tick, and the later of two on one tick wins', () => {
+		expect([...variantCalls('hold', 20, [key(0.075, 'a'), key(0.5, 'b'), key(0.52, 'c'), key(0.49, 'd')])]).toEqual([
+			[2, 'a'],
+			[10, 'c'],
+		])
+		expect([...variantCalls('once', 20, [key(0.52, 'c'), key(0.49, 'd')])]).toEqual([[10, 'c']])
+	})
+
+	test('a time past the last tick lands on it', () => {
+		expect([...variantCalls('hold', 20, [key(1.2, 'a')])]).toEqual([[20, 'a']])
+	})
+
+	test("a loop applies tick 0's variant on its last tick, and a keyframe there counts as one on tick 0", () => {
+		expect([...variantCalls('loop', 20, [key(0, 'a'), key(0.5, 'b')])]).toEqual([[0, 'a'], [10, 'b'], [20, 'a']])
+		expect([...variantCalls('loop', 20, [key(1, 'z')])]).toEqual([[0, 'z'], [20, 'z']])
+		expect([...variantCalls('loop', 20, [key(0, 'a'), key(1, 'z')])]).toEqual([[0, 'z'], [20, 'z']])
+		expect([...variantCalls('loop', 0, [key(0, 'a')])]).toEqual([[0, 'a']])
+	})
+
+	test('only bones a variant rewrites are cut, the tick before it is applied', () => {
+		const cuts = variantCuts(new Map([[0, 'a'], [10, 'a'], [20, 'b']]), (variant) => new Set(variant === 'a' ? [0, 1] : [1]))
+		expect(cuts(0)).toEqual([9])
+		expect(cuts(1)).toEqual([9, 19])
+		expect(cuts(2)).toEqual([])
 	})
 })

@@ -29,6 +29,7 @@ const still = (bones: number, locators: number[][] = [[]]): AnimationSource => (
 	ticks: locators.length - 1,
 	priority: 'high',
 	thin: 'project',
+	variantKeys: [],
 	matrices: Float64Array.from(locators.flatMap(() => Array.from({ length: bones }, () => identity).flat())),
 	locators: Float64Array.from(locators.flat()),
 })
@@ -100,6 +101,92 @@ describe('variant', () => {
 		expect(bad({ name: 'call', textures: [], excluded: [], onApply: 'not a function' })).toHaveLength(1)
 		expect(problems({ ...source, variants: [source.variants[0]!, source.variants[0]!] })).toHaveLength(1)
 	})
+})
+
+describe('variant keyframes', () => {
+	const textures = [texture('skin', 32), texture('skin_alt', 32), texture('eye', 16), texture('eye_closed', 16)]
+	const bones = [bone('Body', 0), bone('Head', 2)]
+	const variants = [{ name: 'blink', textures: [[2, 3]] as [number, number][], excluded: [], onApply: '' }]
+	const call = (name: string) => `function rigel:axia/variant/${name}`
+	const warm = 'execute if score $Rigel.axia Rigel.Warming matches 1 run return 0'
+	const build = (animation: Partial<AnimationSource>, overrides: Partial<RigSource> = {}, thin = false) =>
+		buildExport(rig({ bones, textures, variants, animations: [{ ...still(2, [[], [], [], [], []]), ...animation }], ...overrides }), thin ? { ...settings, thin: { position: 0.01, rotation: 1 } } : settings, undefined)
+	const frame = (result: ReturnType<typeof build>, f: number) => lines(result.rigPack, fn(`frames/0/${f}`))
+
+	test('a keyframe calls its variant in the frame function of its tick, after the checks and before the end of the animation', () => {
+		const result = build({ loop: 'hold', variantKeys: [{ time: 0.1, variant: 'blink' }, { time: 0.2, variant: 'default' }] })
+		expect(frame(result, 1)).toEqual([warm])
+		expect(frame(result, 2)).toEqual([warm, call('blink')])
+		expect(frame(result, 4)).toEqual([warm, call('default'), 'scoreboard players set $Rigel.axia Rigel.Playing 0'])
+	})
+
+	test('the later of two keyframes on one tick wins, and a time is rounded to the nearest tick', () => {
+		const result = build({ loop: 'hold', variantKeys: [{ time: 0.11, variant: 'default' }, { time: 0.09, variant: 'blink' }, { time: 0.06, variant: 'blink' }] })
+		expect(frame(result, 1)).toEqual([warm, call('blink')])
+		expect(frame(result, 2)).toEqual([warm, call('default')])
+		expect(frame(result, 3)).toEqual([warm])
+	})
+
+	test("a loop applies tick 0's variant again on its last tick, and a keyframe on the last tick is one on tick 0", () => {
+		const first = build({ variantKeys: [{ time: 0, variant: 'blink' }] })
+		expect(frame(first, 0).at(-1)).toBe(call('blink'))
+		expect(frame(first, 0).filter((l) => l.startsWith('$data merge'))).toHaveLength(2)
+		expect(frame(first, 4)).toEqual([warm, call('blink'), 'scoreboard players set $Rigel.axia Rigel.Frame 0'])
+		const last = build({ variantKeys: [{ time: 0.2, variant: 'blink' }] })
+		expect(frame(last, 0).at(-1)).toBe(call('blink'))
+		expect(frame(last, 4)).toEqual([warm, call('blink'), 'scoreboard players set $Rigel.axia Rigel.Frame 0'])
+		const both = build({ variantKeys: [{ time: 0, variant: 'blink' }, { time: 0.2, variant: 'default' }, { time: 0.1, variant: 'blink' }] })
+		expect(frame(both, 0).at(-1)).toBe(call('default'))
+		expect(frame(both, 2)).toEqual([warm, call('blink')])
+		expect(frame(both, 4)).toEqual([warm, call('default'), 'scoreboard players set $Rigel.axia Rigel.Frame 0'])
+	})
+
+	test('a once animation applies its keyframes and the rest frame leaves them', () => {
+		const result = build({ loop: 'once', variantKeys: [{ time: 0.2, variant: 'blink' }] })
+		expect(frame(result, 4)).toEqual([warm, call('blink')])
+		expect(frame(result, 5).some((l) => l.includes('variant'))).toBe(false)
+	})
+
+	test('the original model can be a keyframe even where no variant exists', () => {
+		const result = build({ variantKeys: [{ time: 0.1, variant: 'default' }] }, { variants: [] })
+		expect(frame(result, 2)).toEqual([warm, call('default')])
+		expect(lines(result.rigPack, fn('variant/default'))).toEqual(['execute unless entity 1a2b3c4d-0-0-0-0 run return fail'])
+	})
+
+	test('a keyframe that names a variant that does not exist stops the export', () => {
+		const withKeys = (variantKeys: AnimationSource['variantKeys']) => problems(rig({ bones, textures, variants, animations: [{ ...still(2, [[], []]), variantKeys }] }))
+		expect(withKeys([{ time: 0.05, variant: null }])).toEqual(['アニメ「idle」の 0.05 秒の variant keyframe が、存在しない variant を指しています。'])
+		expect(withKeys([{ time: 0.05, variant: 'gone' }])).toHaveLength(1)
+		expect(withKeys([{ time: 0.05, variant: 'blink' }, { time: 0.05, variant: 'default' }])).toEqual([])
+	})
+
+	// Every bone moves at a steady speed: without keyframes each of them is one long run.
+	const sliding = (ticks: number): Partial<AnimationSource> => ({
+		loop: 'hold',
+		ticks,
+		matrices: Float64Array.from(Array.from({ length: ticks + 1 }, (_, f) => [0, 1].flatMap(() => identity.map((v, i) => (i === 13 ? f * 0.05 : v)))).flat()),
+		locators: new Float64Array(),
+	})
+	const write = (result: ReturnType<typeof build>, f: number, entity: number) => frame(result, f).filter((l) => l.startsWith(`$data merge entity 1a2b3c4d-0-0-0-${entity} {`))
+
+	test('a thinned bone the variant rewrites is written on the tick it is applied, a bone it leaves alone is not', () => {
+		const plain = build(sliding(30), {}, true)
+		expect(write(plain, 4, 2)[0]).toContain('interpolation_duration:20,')
+		expect(write(plain, 10, 2)).toEqual([])
+		const keyed = build({ ...sliding(30), variantKeys: [{ time: 0.5, variant: 'blink' }] }, {}, true)
+		expect(write(keyed, 4, 2)[0]).toContain('PortalCooldown:9,interpolation_duration:6,')
+		expect(write(keyed, 10, 2)[0]).toContain('interpolation_duration:20,')
+		expect(write(keyed, 10, 1)).toEqual([])
+		expect(write(keyed, 4, 1)[0]).toContain('interpolation_duration:20,')
+	})
+
+	test('a bone that is standing still needs no write', () => {
+		const still30 = { ...sliding(30), matrices: Float64Array.from(Array.from({ length: 31 }, () => [...identity, ...identity]).flat()) }
+		const keyed = build({ ...still30, variantKeys: [{ time: 0.5, variant: 'blink' }] }, {}, true)
+		expect(write(keyed, 10, 2)).toEqual([])
+		expect(frame(keyed, 10)).toEqual([warm, call('blink')])
+	})
+
 })
 
 describe('locator', () => {

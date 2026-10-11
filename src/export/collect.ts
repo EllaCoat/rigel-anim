@@ -2,9 +2,10 @@ import type { Vec3 } from '../bake/matrix'
 import { collectBones, readBoneMatrices, readLocatorPositions, sampleAnimation, tickCount } from '../bake/sample'
 import { readDisplay } from '../display/settings'
 import { readLocatorEntity } from '../locator/settings'
-import { readVariants } from '../variant/settings'
+import { keyframeVariant, variantKeyframes } from '../variant/keyframes'
+import { DEFAULT_VARIANT_ID, readVariants } from '../variant/settings'
 import { getPriority, getThin } from './settings'
-import { DIRECTIONS, type CubeSource, type FaceSource, type LocatorSource, type RigSource, type TextureSource, type VariantSource } from './types'
+import { DIRECTIONS, type CubeSource, type FaceSource, type LocatorSource, type RigSource, type TextureSource, type VariantKey, type VariantSource } from './types'
 
 function pngBytes(texture: Texture): Uint8Array {
 	const url = texture.getDataURL()
@@ -58,6 +59,14 @@ function variantSources(groups: Group[], textures: Texture[]): VariantSource[] {
 	}))
 }
 
+function variantKeys(animation: BBAnimation): VariantKey[] {
+	const variants = readVariants(Project!)
+	return variantKeyframes(animation).map((kf) => {
+		const id = keyframeVariant(kf)
+		return { time: kf.time, variant: id === DEFAULT_VARIANT_ID ? id : (variants.find((v) => v.uuid === id)?.name ?? null) }
+	})
+}
+
 function locatorSource(locator: Locator): LocatorSource {
 	const entity = readLocatorEntity(locator)
 	return { name: locator.name, entity: entity.type ? entity : undefined }
@@ -91,7 +100,7 @@ export function collectRig(): RigSource {
 			variants: variantSources(groups, textures),
 			animations: Project!.animations.map((a) => {
 				const sampled = sampleAnimation(a, groups, locators)
-				return { name: a.name, loop: a.loop, ticks: tickCount(a), priority: getPriority(a), thin: getThin(a), matrices: sampled.matrices, locators: sampled.locators }
+				return { name: a.name, loop: a.loop, ticks: tickCount(a), priority: getPriority(a), thin: getThin(a), variantKeys: variantKeys(a), matrices: sampled.matrices, locators: sampled.locators }
 			}),
 		}
 	} finally {

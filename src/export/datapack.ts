@@ -73,6 +73,8 @@ export interface RigPackInput {
 		frames: FrameWrite[][]
 		// [frame][locator]: x,y,z, with a loop's last frame already showing frame 0.
 		locators: string[][]
+		// frame → the variant its function applies.
+		variants?: ReadonlyMap<number, string>
 	}[]
 }
 
@@ -127,6 +129,8 @@ export function rigPack(p: RigPackInput): Files {
 			animation.locators[f]?.forEach((at, l) => {
 				if (f === 0 || at !== animation.locators[f - 1]![l]) lines.push(...placeLocator(l, at))
 			})
+			const variant = animation.variants?.get(f)
+			if (variant) lines.push(`function ${id(`variant/${variant}`)}`)
 			if (f === last) {
 				if (animation.loop === 'loop' && last > 0) lines.push(`scoreboard players set ${self} Rigel.Frame 0`)
 				else if (animation.loop !== 'once') lines.push(`scoreboard players set ${self} Rigel.Playing 0`)

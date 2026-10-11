@@ -5,6 +5,7 @@ import { itemModel } from './item-model'
 import { itemModelPath, mergeItemModel } from './resource-pack'
 import { animationRunEnds } from './thin'
 import type { AnimationSource, Files, RigSettings, RigSource, Tolerance } from './types'
+import { variantCalls, variantCuts } from './variant-keys'
 
 export class ExportError extends Error {
 	constructor(readonly problems: string[]) {
@@ -50,6 +51,9 @@ export function variantProblems(source: RigSource): string[] {
 		}
 		if (v.onApply && !FUNCTION_ID.test(v.onApply)) problems.push(`${at}: 適用時の関数は namespace:path の形で入力してください。`)
 	}
+	for (const a of source.animations)
+		for (const key of a.variantKeys)
+			if (key.variant === null || (key.variant !== DEFAULT_VARIANT && !names.has(key.variant))) problems.push(`アニメ「${a.name}」の ${key.time.toFixed(2)} 秒の variant keyframe が、存在しない variant を指しています。`)
 	return problems
 }
 
@@ -144,7 +148,8 @@ export function buildExport(source: RigSource, settings: RigSettings, existingIt
 	})
 	// Bones some variant changes; a variant writes all of them it does not exclude, so applying it undoes the others there.
 	const changed = renderable.flatMap((_, r) => (variantModels.some((vm) => vm[r] !== undefined) ? [r] : []))
-	const variants: VariantInput[] = source.variants.length === 0 ? [] : [
+	const usesVariants = source.variants.length > 0 || source.animations.some((a) => a.variantKeys.length > 0)
+	const variants: VariantInput[] = !usesVariants ? [] : [
 		...source.variants.map((v, k) => ({
 			name: v.name,
 			writes: changed.filter((r) => !v.excluded.includes(renderable[r]!.index)).map((r) => ({ passenger: r, cmd: cmdOf.get(variantModels[k]![r] ?? models[r]!.name)! })),
@@ -153,6 +158,7 @@ export function buildExport(source: RigSource, settings: RigSettings, existingIt
 		{ name: DEFAULT_VARIANT, writes: changed.map((r) => ({ passenger: r, cmd: cmdOf.get(models[r]!.name)! })), onApply: '' },
 	]
 
+	const rewritten = (name: string) => new Set(variants.find((v) => v.name === name)?.writes.map((w) => w.passenger))
 	const bones = source.bones.length
 	const pose = (matrices: Float64Array, frame: number) =>
 		renderable.map(({ bone, index }, r) => {
@@ -165,13 +171,14 @@ export function buildExport(source: RigSource, settings: RigSettings, existingIt
 	const animations = source.animations.map((a) => {
 		const poses = Array.from({ length: a.ticks + 1 }, (_, f) => pose(a.matrices, f))
 		const tolerance = toleranceOf(a, settings)
-		const frames = planFrames(a.loop, poses, tolerance && animationRunEnds(a.loop, poses, tolerance, settings.span))
+		const calls = variantCalls(a.loop, a.ticks, a.variantKeys.flatMap((k) => (k.variant === null ? [] : [{ time: k.time, variant: k.variant }])))
+		const frames = planFrames(a.loop, poses, tolerance && animationRunEnds(a.loop, poses, tolerance, settings.span, variantCuts(calls, rewritten)))
 		const count = (plan: typeof frames) => plan.reduce((t, w) => t + w.length, 0)
 		writes.thinned += count(frames)
 		writes.full += tolerance ? count(planFrames(a.loop, poses)) : count(frames)
 		const shown = (f: number) => (f === a.ticks && a.loop === 'loop' ? 0 : f)
 		const locators = poses.map((_, f) => source.locators.map((_, l) => locatorString(a.locators, (shown(f) * locatorCount + l) * 3)))
-		return { name: a.name, loop: a.loop, priority: a.priority, poses, frames, locators }
+		return { name: a.name, loop: a.loop, priority: a.priority, poses, frames, locators, variants: calls }
 	})
 	return {
 		rigPack: rigPack({

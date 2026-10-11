@@ -379,6 +379,7 @@ function source(): RigSource {
 		ticks: 2,
 		priority: 'high',
 		thin: 'project',
+		variantKeys: [],
 		matrices: Float64Array.from([...moved(0), ...moved(0.5), ...moved(0)]),
 		locators: new Float64Array(),
 	}

@@ -21,7 +21,8 @@ export interface View {
 	pitch: number
 	// Without a pose the rig shows its rest pose.
 	pose?: Pose
-	// A variant of the rig, applied after the pose in Minecraft and shown in Blockbench. Minecraft keeps it for the later views.
+	// A variant of the rig, applied before the pose so that played poses step it onto the client. The later views keep it,
+	// in Minecraft and in the Blockbench drawing, until another view names one; default goes back to the project's own textures.
 	variant?: string
 	// Server console commands run after the pose, before the screenshot.
 	commands?: string[]
@@ -144,7 +145,7 @@ const TICKS_PER_SECOND = 20
 // changes, so calling them in order reaches the tick from any earlier state.
 export function poseCommands(spec: Spec, animations: { name: string; length: number }[], view: View): string[] {
 	const variant = view.variant ? [`function rigel:${spec.rig}/variant/${view.variant}`] : []
-	return [...posing(spec, animations, view), ...variant, ...(view.commands ?? [])]
+	return [...variant, ...posing(spec, animations, view), ...(view.commands ?? [])]
 }
 
 function posing(spec: Spec, animations: { name: string; length: number }[], view: View): string[] {

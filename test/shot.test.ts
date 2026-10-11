@@ -45,9 +45,9 @@ describe('poses', () => {
 		expect(poseCommands(spec, animations, spec.views[1]!)).toEqual([frame(0), frame(1), frame(2)])
 	})
 
-	test('a view with a variant applies it after the pose, before its own commands', () => {
+	test('a view with a variant applies it before the pose and its own commands', () => {
 		const withVariant = parseSpec({ origin: [0, 0, 0], rig: 'axia', model: 'rig.bbmodel', views: [{ ...view, variant: 'alt', commands: ['say hi'] }] })
-		expect(poseCommands(withVariant, animations, withVariant.views[0]!)).toEqual(['function rigel:axia/rest', 'function rigel:axia/variant/alt', 'say hi'])
+		expect(poseCommands(withVariant, animations, withVariant.views[0]!)).toEqual(['function rigel:axia/variant/alt', 'function rigel:axia/rest', 'say hi'])
 	})
 
 	test('a tick past the end stops at the last frame', () => {

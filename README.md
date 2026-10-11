@@ -53,13 +53,13 @@ Blockbench で作ったモデルとアニメーションを、Minecraft Java Edi
 
 #### variant の keyframe
 
-アニメーションの画面では、タイムラインで variant を切り替えられる。Timeline の Effects にある「Variant」トラックが、そのためのトラックになる。keyframe は variant を 1 つ持ち、`default` も選べる。
+アニメーションの画面では、Timeline の Effects にある「Variant」トラックで variant を切り替えられる。keyframe は variant を 1 つ持ち、`default` も選べる。
 
 - 「Variants」パネルの「再生位置に置く」は、パネルで選んでいる variant の keyframe を再生位置に置く。そこに keyframe があれば、その variant を替える。トラックの「+」でも置ける。
 - keyframe の variant を替えるときは、keyframe をタイムラインか、パネルの keyframe の一覧で選び、パネルの一覧で variant を選ぶ。
 - keyframe があるアニメーションでは、再生とスクラブで、再生位置以前で最後の keyframe の variant を表示する。最初の keyframe より前では、最後の keyframe の variant を表示する。keyframe が 1 つもないアニメーションと、アニメーション以外の画面では、パネルで選んだ variant を表示する。
 - トラックの目のアイコンで切るミュートは、プレビューだけに効く。書き出しには、ミュートした keyframe も含まれる。
-- keyframe は、variant を改名しても外れない。variant を削除すると、その variant を指していた keyframe が残り、書き出しは、存在しない variant を指す keyframe があると知らせて止まる。
+- keyframe は、variant を改名しても外れない。variant を削除しても、その variant を指す keyframe は残る。存在しない variant を指す keyframe があると、書き出しはそれを知らせて止まる。
 
 書き出すと、keyframe の時刻を tick（1 秒 20 tick、四捨五入）にして、その tick のフレームの関数が `rigel:<リグ名>/variant/<variant 名>` を呼ぶ。温めのあいだは呼ばない。
 
@@ -143,7 +143,7 @@ File メニューの「Export」から「Rigel のパックを書き出す」を
 | `rigel:<リグ名>/restart` | pause で止めたところから再生を続ける。pause 中でなければ失敗で返す |
 | `rigel:<リグ名>/tp` | リグを実行位置へ動かし、実行者の向きにそろえる。locator の entity も置き直す |
 | `rigel:<リグ名>/kill` | リグを消す。locator の entity も消す |
-| `rigel:<リグ名>/variant/<variant 名>` | variant を適用する。適用する Bone のモデルを差し替え、適用時の関数があれば呼ぶ。アニメーションの variant の keyframe の tick にも、この関数が呼ばれる |
+| `rigel:<リグ名>/variant/<variant 名>` | variant を適用する。適用する Bone のモデルを差し替え、適用時の関数があれば呼ぶ。variant の keyframe がある tick にも呼ばれる |
 | `rigel:<リグ名>/variant/default` | variant で差し替えたモデルを元に戻す。keyframe に `default` を置いた tick にも呼ばれる |
 | `rigel:<リグ名>/at_locator/<locator 名> {function:"<名前空間>:<パス>"}` | locator の今の位置で、リグの向きのまま関数を実行する。`@s` は呼び出し元のまま |
 
@@ -170,7 +170,7 @@ locator の今の位置は、storage `rigel:<リグ名> Locators.<locator 名>` 
 - 間引いたリグでは、stop と pause の後も、各 Bone は client に見えている姿勢で止まる。restart すると、区間の残りの tick で区間の終わりへ続く。pause を呼んだ tick に新しい区間を始めた Bone は、1 tick 前の姿勢で止まることがある。ループの 2 周目以降では、pause の直前に書いた Bone が、restart の後に 1 tick 分の動きを数 tick かけて追うことがある。
 - 間引いたリグを stop・pause した後で、間引きを切って書き出し直したら、リグを召喚し直す。召喚し直さないと、止めたときの長い `interpolation_duration` が Bone に残り、リグが動かなくなる。
 - 間引いたリグでは、play を呼んだ tick と once のアニメが初期姿勢へ戻る tick に、Bone は補間せずにその姿勢へ移る。同じ姿勢を書いて補間をやり直すと、client が前の区間の補間をもう一度見せるからだ。
-- variant の keyframe がある tick の前で、その variant が書き込む Bone の区間を区切り、その tick に次の区間の書き込みを入れる。client は、アイテムが替わると補間を表示中の姿勢からやり直すが、区間の進み具合は引き継ぐ。区間の途中でアイテムが替わると、Bone の動きが一瞬ずれるからだ。すでに止まっている Bone は書き込まない。区間を区切るぶん、その Bone の書き込みは増える。
+- variant の keyframe がある tick では、その variant が書き込む Bone の区間を直前で区切り、その tick から次の区間を書き込む。client は、アイテムが替わると補間を表示中の姿勢からやり直すが、区間の進み具合は引き継ぐ。区間の途中でアイテムが替わると、Bone の動きが一瞬ずれるからだ。すでに止まっている Bone は書き込まない。区間を区切るぶん、その Bone の書き込みは増える。
 - 間引いたリグは、stop と pause のときに Bone の `shadow_strength` を書き換え、区間の終わりのフレーム番号を `PortalCooldown` に入れる。`shadow_strength` は `shadow_radius` が 0（既定）なら見た目に出ず、`PortalCooldown` は display entity の動きに関わらない。
 
 #### 書き出しの制限

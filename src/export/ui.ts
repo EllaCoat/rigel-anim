@@ -1,7 +1,18 @@
 import { isRigelProject } from '../easing/keyframes'
 import { ExportError, normalizeItem, settingsProblems, uniqueName } from './build'
 import { collectRig } from './collect'
-import { getPriority, newRigId, readProjectSettings, setPriority, writeProjectSettings, type ProjectSettings } from './settings'
+import {
+	getAnimationTolerance,
+	getPriority,
+	getThinMode,
+	newRigId,
+	readProjectSettings,
+	setPriority,
+	setThin,
+	writeProjectSettings,
+	type AnimationThinMode,
+	type ProjectSettings,
+} from './settings'
 import { WARM_PRIORITIES, type WarmPriority } from './types'
 import { ExportConflict, exportRig, type ExportFs } from './write'
 
@@ -38,7 +49,10 @@ async function run(settings: ProjectSettings, replace = false): Promise<void> {
 			settings,
 			{ replace },
 		)
-		Blockbench.showQuickMessage(`書き出しました（${summary.files} ファイル）。`, 2500)
+		const { thinned, full } = summary.writes
+		const requested = settings.thin !== undefined || Project!.animations.some((a) => getThinMode(a) === 'custom')
+		const reduced = requested ? `、フレームの書き込み ${thinned.toLocaleString()} 行（間引く前の ${full.toLocaleString()} 行の ${Math.round((thinned / full) * 100)}%）` : ''
+		Blockbench.showQuickMessage(`書き出しました（${summary.files} ファイル${reduced}）。`, reduced ? 6000 : 2500)
 	} catch (error) {
 		if (error instanceof ExportConflict) {
 			const lines = [
@@ -61,6 +75,8 @@ function openExportDialog(): void {
 	const current = readProjectSettings(project)
 	const animations = project.animations
 	const priorities = Object.fromEntries(WARM_PRIORITIES.map((p) => [p, p]))
+	const thinModes: Record<AnimationThinMode, string> = { project: 'プロジェクトと同じ', off: '間引かない', custom: 'このアニメの値' }
+	const custom = (i: number) => (form: FormResult) => form[`thin_${i}`] === 'custom'
 	dialog?.delete()
 	dialog = new Dialog({
 		id: 'rigel_export',
@@ -72,9 +88,46 @@ function openExportDialog(): void {
 			datapacks: { label: 'データパックの置き場所', type: 'folder', value: current.datapacks, description: 'ワールドの datapacks フォルダです。リグのパックと、共通のパック rigel をここに書き出します。' },
 			resourcePack: { label: 'リソースパック', type: 'folder', value: current.resourcePack, description: '全リグで共有するリソースパックのフォルダです。' },
 			chunkLines: { label: '温めの 1 かたまり（行）', type: 'number', value: current.chunkLines, min: 1, step: 1 },
-			...Object.fromEntries(animations.map((a, i) => [`warm_${i}`, { label: `温めの優先度 ${i}: ${a.name}`, type: 'select', options: priorities, value: getPriority(a) }])),
+			thin: {
+				label: '間引く',
+				type: 'checkbox',
+				value: current.thin !== undefined,
+				description: 'display entity の補間で、ずれの上限の中に再現できる tick への書き込みを、Bone ごとに省きます。',
+			},
+			thinPosition: { label: 'ずれの上限：位置（ブロック）', type: 'number', value: current.tolerance.position, min: 0, step: 0.001, condition: (form: FormResult) => !!form.thin },
+			thinRotation: {
+				label: 'ずれの上限：向き（度）',
+				type: 'number',
+				value: current.tolerance.rotation,
+				min: 0,
+				step: 0.1,
+				description: '拡大のずれの上限（割合）にも、この角度をラジアンにした値を使います。',
+				condition: (form: FormResult) => !!form.thin,
+			},
+			span: {
+				label: '1 回の書き込みで補間する上限（tick）',
+				type: 'number',
+				value: current.span,
+				min: 1,
+				step: 1,
+				condition: (form: FormResult) => !!form.thin || animations.some((_, i) => custom(i)(form)),
+			},
+			...Object.fromEntries(
+				animations.flatMap((a, i) => {
+					const own = getAnimationTolerance(a)
+					return [
+						[`warm_${i}`, { label: `温めの優先度 ${i}: ${a.name}`, type: 'select', options: priorities, value: getPriority(a) }],
+						[`thin_${i}`, { label: `間引き ${i}: ${a.name}`, type: 'select', options: thinModes, value: getThinMode(a) }],
+						[`thin_position_${i}`, { label: `位置（ブロック） ${i}: ${a.name}`, type: 'number', value: own.position, min: 0, step: 0.001, condition: custom(i) }],
+						[`thin_rotation_${i}`, { label: `向き（度） ${i}: ${a.name}`, type: 'number', value: own.rotation, min: 0, step: 0.1, condition: custom(i) }],
+					]
+				}),
+			),
 		},
 		onConfirm(result: FormResult) {
+			// Fields hidden by their condition keep the value they had.
+			const number = (key: string, fallback: number) => (result[key] === undefined || result[key] === '' ? fallback : Number(result[key]))
+			const tolerance = { position: number('thinPosition', current.tolerance.position), rotation: number('thinRotation', current.tolerance.rotation) }
 			const settings: ProjectSettings = {
 				rig: String(result.rig ?? '').trim(),
 				id: current.id || newRigId(),
@@ -82,6 +135,9 @@ function openExportDialog(): void {
 				datapacks: String(result.datapacks ?? ''),
 				resourcePack: String(result.resourcePack ?? ''),
 				chunkLines: Number(result.chunkLines),
+				thin: result.thin ? tolerance : undefined,
+				tolerance,
+				span: number('span', current.span),
 			}
 			const problems = problemsOf(settings)
 			if (problems.length > 0) {
@@ -89,7 +145,11 @@ function openExportDialog(): void {
 				return false
 			}
 			writeProjectSettings(project, settings)
-			animations.forEach((a, i) => setPriority(a, result[`warm_${i}`] as WarmPriority))
+			animations.forEach((a, i) => {
+				setPriority(a, result[`warm_${i}`] as WarmPriority)
+				const own = getAnimationTolerance(a)
+				setThin(a, result[`thin_${i}`] as AnimationThinMode, { position: number(`thin_position_${i}`, own.position), rotation: number(`thin_rotation_${i}`, own.rotation) })
+			})
 			project.saved = false
 			void run(settings)
 		},

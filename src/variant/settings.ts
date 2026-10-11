@@ -38,7 +38,7 @@ export function readVariants(project: ModelProject): StoredVariant[] {
 		const o = v as Record<string, unknown>
 		if (typeof o.uuid !== 'string' || seen.has(o.uuid)) o.uuid = crypto.randomUUID()
 		seen.add(o.uuid as string)
-		const textures = Array.isArray(o.textures) ? o.textures.filter((p): p is [string, string] => Array.isArray(p) && typeof p[0] === 'string' && typeof p[1] === 'string') : []
+		const textures = Array.isArray(o.textures) ? o.textures.flatMap((p): [string, string][] => (Array.isArray(p) && typeof p[0] === 'string' && typeof p[1] === 'string' ? [[p[0], p[1]]] : [])) : []
 		return [{ uuid: o.uuid as string, name: typeof o.name === 'string' ? o.name : '', textures, excluded: strings(o.excluded), onApply: typeof o.onApply === 'string' ? o.onApply : '' }]
 	})
 }
@@ -46,4 +46,16 @@ export function readVariants(project: ModelProject): StoredVariant[] {
 export function writeVariants(project: ModelProject, variants: StoredVariant[]): void {
 	;(project as unknown as Record<string, unknown>)[KEY] = variants.map((v) => ({ ...v, textures: v.textures.map((p) => [...p]), excluded: [...v.excluded] }))
 	project.saved = false
+}
+
+export function newVariant(name: string): StoredVariant {
+	return { uuid: crypto.randomUUID(), name, textures: [], excluded: [], onApply: '' }
+}
+
+// `base`, then `base_2`, `base_3` … for the first name no variant has.
+export function freeName(base: string, variants: StoredVariant[]): string {
+	const taken = new Set(variants.map((v) => v.name))
+	let name = base
+	for (let n = 2; taken.has(name); n++) name = `${base}_${n}`
+	return name
 }

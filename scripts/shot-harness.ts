@@ -1,6 +1,6 @@
 // Runs inside the development Blockbench: mc-shot.ts bundles this file and injects it as __rigelShot.
-import { readVariants } from '../src/variant/settings'
-import { previewVariant } from '../src/variant/ui'
+import { DEFAULT_VARIANT_ID, readVariants } from '../src/variant/settings'
+import { choose } from '../src/variant/view'
 import { blockbenchCamera, FOV, type Pose, type View } from './shot-spec'
 
 const TICKS_PER_SECOND = 20
@@ -50,7 +50,7 @@ function applyPose(pose: Pose | undefined): void {
 function applyVariant(name: string | undefined): void {
 	const variant = name === undefined ? undefined : readVariants(Project!).find((v) => v.name === name)
 	if (name !== undefined && !variant) throw new Error(`no variant "${name}"`)
-	previewVariant(variant)
+	choose(variant?.uuid ?? DEFAULT_VARIANT_ID)
 }
 
 // Draws only the model (no grid, gizmos or background) into a transparent image of the given size.

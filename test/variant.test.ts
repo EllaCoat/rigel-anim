@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { variantCalls, variantCuts } from '../src/export/variant-keys'
-import { DEFAULT_VARIANT_ID, readVariants, writeVariants, type StoredVariant } from '../src/variant/settings'
+import { DEFAULT_VARIANT_ID, freeName, newVariant, readVariants, writeVariants, type StoredVariant } from '../src/variant/settings'
 
 const project = (rigel_variants: unknown) => ({ rigel_variants, saved: true }) as unknown as ModelProject
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
@@ -40,6 +40,13 @@ describe('stored variants', () => {
 		v.excluded.push('g')
 		expect(readVariants(p)).toEqual([{ uuid: 'u', name: 'smile', textures: [], excluded: [], onApply: '' }])
 		expect((p as unknown as { saved: boolean }).saved).toBe(false)
+	})
+
+	test('free names count up from the second', () => {
+		const taken = [newVariant('face'), newVariant('face_2')]
+		expect(freeName('face', [])).toBe('face')
+		expect(freeName('face', taken)).toBe('face_3')
+		expect(newVariant('a').uuid).not.toBe(newVariant('a').uuid)
 	})
 })
 

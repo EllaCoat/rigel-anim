@@ -10,7 +10,9 @@ import { registerFormat, unregisterFormat } from './format'
 import { registerLocatorSettings, unregisterLocatorSettings } from './locator/settings'
 import { registerLocatorUi, unregisterLocatorUi } from './locator/ui'
 import { registerVariantSettings, unregisterVariantSettings } from './variant/settings'
-import { registerVariantUi, unregisterVariantUi } from './variant/ui'
+import { redrawVariantPanel, registerVariantPanel, unregisterVariantPanel } from './variant/panel'
+import { registerVariantUndo, unregisterVariantUndo } from './variant/undo'
+import { refreshView, registerVariantView, unregisterVariantView } from './variant/view'
 
 const PLUGIN_ID = 'rigel'
 const VERSION = '0.0.0'
@@ -32,7 +34,9 @@ BBPlugin.register(PLUGIN_ID, {
 		registerDisplaySettings()
 		registerLocatorSettings()
 		registerExportUi()
-		registerVariantUi()
+		registerVariantPanel()
+		registerVariantView(redrawVariantPanel)
+		registerVariantUndo(refreshView)
 		registerDisplayUi()
 		registerLocatorUi()
 		registerFontSettings(refreshAllDisplayPreviews)
@@ -43,7 +47,9 @@ BBPlugin.register(PLUGIN_ID, {
 		unregisterFontSettings()
 		unregisterLocatorUi()
 		unregisterDisplayUi()
-		unregisterVariantUi()
+		unregisterVariantUndo()
+		unregisterVariantView()
+		unregisterVariantPanel()
 		unregisterExportUi()
 		unregisterLocatorSettings()
 		unregisterDisplaySettings()

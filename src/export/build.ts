@@ -33,14 +33,21 @@ export function settingsProblems(s: RigSettings): string[] {
 	return problems
 }
 
+// others: the names of the other variants.
+export function variantNameProblem(name: string, others: ReadonlySet<string>): string | undefined {
+	if (!VARIANT_NAME.test(name)) return '名前には小文字・数字・_ だけを使ってください。'
+	if (name === DEFAULT_VARIANT) return `${DEFAULT_VARIANT} は元のモデルに戻す関数の名前なので使えません。`
+	if (others.has(name)) return '同じ名前の variant が 2 つあります。'
+	return undefined
+}
+
 export function variantProblems(source: RigSource): string[] {
 	const problems: string[] = []
 	const names = new Set<string>()
 	for (const v of source.variants) {
 		const at = `variant「${v.name}」`
-		if (!VARIANT_NAME.test(v.name)) problems.push(`${at}: 名前には小文字・数字・_ だけを使ってください。`)
-		else if (v.name === DEFAULT_VARIANT) problems.push(`${at}: ${DEFAULT_VARIANT} は元のモデルに戻す関数の名前なので使えません。`)
-		else if (names.has(v.name)) problems.push(`${at}: 同じ名前の variant が 2 つあります。`)
+		const nameProblem = variantNameProblem(v.name, names)
+		if (nameProblem) problems.push(`${at}: ${nameProblem}`)
 		names.add(v.name)
 		for (const [from, to] of v.textures) {
 			const a = source.textures[from]

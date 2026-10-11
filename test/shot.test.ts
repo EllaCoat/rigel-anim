@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { blockbenchCamera, EYE_HEIGHT, lookDirection, parseSpec, poseCommands, teleportArgs } from '../scripts/shot-spec'
+import { callVariant, viewCalls, type Worn } from '../scripts/shot-variants'
 
 const view = { name: 'front', eye: [0, 1.2, 3.5], yaw: 180, pitch: 10 }
 
@@ -129,5 +130,48 @@ describe('cameras', () => {
 		expect(position).toEqual([40, 40, 40])
 		const d = lookDirection(135, 30)
 		target.forEach((v, i) => expect(v - position[i]!).toBeCloseTo(d[i]! * 16, 12))
+	})
+})
+
+describe('variants a view leaves on the rig', () => {
+	// The synthetic rig: alt leaves the tail alone, tip changes only the hand and the gem.
+	const bones = ['body', 'arm', 'hand', 'tail', 'tailtip', 'gem']
+	const excluded = new Map([['alt', new Set(['tail'])], ['tip', new Set(['body', 'arm', 'tail', 'tailtip'])]])
+	const wear = (calls: string[], from: Worn = new Map()) => {
+		const worn = calls.reduce((w, name) => callVariant(w, name, excluded, bones), from)
+		return bones.map((b) => worn.get(b) ?? 'default').join(' ')
+	}
+
+	test('a variant goes on the bones it does not exclude and leaves the others as they are', () => {
+		expect(wear(['alt'])).toBe('alt alt alt default alt alt')
+		expect(wear(['tip'])).toBe('default default tip default default tip')
+	})
+
+	test('a variant after another leaves what the other put on the bones it excludes', () => {
+		expect(wear(['alt', 'tip'])).toBe('alt alt tip default alt tip')
+		expect(wear(['tip', 'alt'])).toBe('alt alt alt default alt alt')
+	})
+
+	test('default puts the original model on every bone', () => {
+		expect(wear(['alt', 'tip', 'default'])).toBe('default default default default default default')
+	})
+
+	test('the view calls its own variant first, then those of the frames up to its tick, in frame order', () => {
+		const frames = new Map([[10, 'tip'], [0, 'alt'], [20, 'default']])
+		expect(viewCalls({ pose: { tick: 12 } }, frames, 30)).toEqual(['alt', 'tip'])
+		expect(viewCalls({ variant: 'default', pose: { tick: 12 } }, frames, 30)).toEqual(['default', 'alt', 'tip'])
+		expect(viewCalls({ variant: 'alt' }, frames, 30)).toEqual(['alt'])
+		expect(viewCalls({ pose: { tick: 99 } }, frames, 30)).toEqual(['alt', 'tip', 'default'])
+		expect(viewCalls({ pose: { tick: 9 } }, frames, 30)).toEqual(['alt'])
+		expect(viewCalls({}, frames, 30)).toEqual([])
+	})
+
+	test('what one view leaves stays for the views after it, the way the server keeps it', () => {
+		const frames = new Map([[0, 'alt'], [10, 'tip']])
+		let worn: Worn = new Map()
+		for (const name of viewCalls({ pose: { tick: 12 } }, frames, 30)) worn = callVariant(worn, name, excluded, bones)
+		// A view with no pose calls no variant, so the rig keeps the colours of the pose view before it.
+		for (const name of viewCalls({}, new Map(), 0)) worn = callVariant(worn, name, excluded, bones)
+		expect(bones.map((b) => worn.get(b) ?? 'default').join(' ')).toBe('alt alt tip default alt tip')
 	})
 })

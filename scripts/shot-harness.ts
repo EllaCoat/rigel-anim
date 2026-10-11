@@ -2,12 +2,13 @@
 import { tickCount } from '../src/bake/sample'
 import { variantKeys } from '../src/export/collect'
 import { variantCalls } from '../src/export/variant-keys'
-import { DEFAULT_VARIANT_ID } from '../src/variant/settings'
+import { readVariants } from '../src/variant/settings'
 import { blockbenchCamera, FOV, type Pose, type View } from './shot-spec'
+import { callVariant, ORIGINAL, viewCalls, type Worn } from './shot-variants'
 
 const TICKS_PER_SECOND = 20
-// The variant the client shows: what the views asked for, and then what the frames a pose calls apply.
-let current: string | undefined
+// What each bone wears in Minecraft, where the variant functions of every view so far have left it.
+let worn: Worn = new Map()
 type Stackable = { stackAnimations(animations: BBAnimation[], inLoop: boolean): void }
 
 async function open(model: any, name: string) {
@@ -18,7 +19,7 @@ async function open(model: any, name: string) {
 		await project.close(true)
 	}
 	Codecs.project.load(model, { name, path: name, no_file: true } as any)
-	current = undefined
+	worn = new Map()
 	// The viewport follows the selected animation's variant keyframes; this harness sets the variant itself.
 	for (const animation of Project!.animations) {
 		const effects = animation.animators.effects as unknown as { muted: Record<string, boolean> } | undefined
@@ -57,30 +58,40 @@ function applyPose(pose: Pose | undefined): void {
 	;(Animator as unknown as Stackable).stackAnimations([animation], false)
 }
 
-// poseCommands calls the frames from 0 to the tick, in order, and the frames apply their variants.
-function variantAfter(pose: Pose | undefined, name: string | undefined): string | undefined {
-	const animation = pose && Project!.animations.find((a) => a.name === pose.animation)
-	if (!pose || !animation) return name
-	const ticks = tickCount(animation)
-	const calls = variantCalls(animation.loop, ticks, variantKeys(animation).flatMap((k) => (k.variant === null ? [] : [{ time: k.time, variant: k.variant }])))
-	for (const [frame, variant] of [...calls].sort((a, b) => a[0] - b[0])) if (frame <= Math.min(pose.tick, ticks)) name = variant === DEFAULT_VARIANT_ID ? undefined : variant
-	return name
-}
-
-// Picks the variant in the plugin's own panel: the plugin keeps what the viewport shows in its own bundle.
-function applyVariant(name: string | undefined): void {
-	const rows = [...document.querySelectorAll<HTMLElement>('#panel_rigel_variants .rv-list li')]
-	const row = rows.find((li) => li.querySelector('.rv-name')?.textContent === (name ?? DEFAULT_VARIANT_ID))
-	if (!row) throw new Error(`no variant "${name}" in the Variants panel`)
-	row.click()
+// Puts on each bone what the variant functions of the view leave it wearing in Minecraft, in the order they are called.
+// The plugin's own preview is left on the original model (open mutes the keyframes), so each Cube draws its own
+// textures first, and then the textures of the variant its bone wears replace them.
+function applyVariants(view: View): void {
+	const variants = readVariants(Project!)
+	const excluded = new Map(variants.map((v) => [v.name, new Set(v.excluded)]))
+	const bones = Group.all.filter((g) => g.children.some((c) => c instanceof Cube)).map((g) => g.uuid)
+	const animation = view.pose && Project!.animations.find((a) => a.name === view.pose!.animation)
+	const ticks = animation ? tickCount(animation) : 0
+	const frameCalls = animation ? variantCalls(animation.loop, ticks, variantKeys(animation).flatMap((k) => (k.variant === null ? [] : [{ time: k.time, variant: k.variant }]))) : new Map<number, string>()
+	for (const name of viewCalls(view, frameCalls, ticks)) {
+		if (name !== ORIGINAL && !excluded.has(name)) throw new Error(`no variant "${name}"`)
+		worn = callVariant(worn, name, excluded, bones)
+	}
+	Canvas.updateView({ elements: Cube.all, element_aspects: { faces: true } })
+	for (const cube of Cube.all) {
+		const variant = variants.find((v) => v.name === (cube.parent instanceof Group ? worn.get(cube.parent.uuid) : undefined))
+		if (!variant) continue
+		const replace = new Map<THREE.Material, THREE.Material>()
+		for (const [from, to] of variant.textures) {
+			const a = Texture.all.find((t) => t.uuid === from)
+			const b = Texture.all.find((t) => t.uuid === to)
+			if (a && b) replace.set(a.getMaterial() as THREE.Material, b.getMaterial() as THREE.Material)
+		}
+		const mesh = cube.mesh as THREE.Mesh
+		const swap = (m: THREE.Material) => replace.get(m) ?? m
+		mesh.material = Array.isArray(mesh.material) ? mesh.material.map(swap) : swap(mesh.material)
+	}
 }
 
 // Draws only the model (no grid, gizmos or background) into a transparent image of the given size.
 function render(view: View, width: number, height: number): string {
 	applyPose(view.pose)
-	if (view.variant !== undefined) current = view.variant === DEFAULT_VARIANT_ID ? undefined : view.variant
-	current = variantAfter(view.pose, current)
-	applyVariant(current)
+	applyVariants(view)
 	const renderer = Preview.selected!.renderer
 	const camera = new THREE.PerspectiveCamera(FOV, width / height, 0.5, 30000)
 	const { position, target } = blockbenchCamera(view)

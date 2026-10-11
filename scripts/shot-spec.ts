@@ -21,8 +21,9 @@ export interface View {
 	pitch: number
 	// Without a pose the rig shows its rest pose.
 	pose?: Pose
-	// A variant of the rig, applied before the pose so that played poses step it onto the client. The later views keep it,
-	// in Minecraft and in the Blockbench drawing, until another view names one; default goes back to the project's own textures.
+	// A variant function of the rig, called before the pose so that played poses step it onto the client. It puts the variant on
+	// the bones it does not exclude, and default puts the project's own textures back on every bone. The rig keeps what it
+	// wears from view to view, in Minecraft and in the Blockbench drawing, and so do the variants the frames of a pose call.
 	variant?: string
 	// Server console commands run after the pose, before the screenshot.
 	commands?: string[]

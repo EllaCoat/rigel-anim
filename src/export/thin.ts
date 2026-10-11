@@ -149,21 +149,44 @@ function within(a: Split, b: Split, t: number, truth: ArrayLike<number>, positio
 	return hidden || Math.hypot(m[12]! - truth[3]!, m[13]! - truth[7]!, m[14]! - truth[11]!) <= position
 }
 
+// How far one matrix is from another, in the measures of `within`: the largest column change relative to the column's
+// length, and the translation change.
+function change(a: ArrayLike<number>, b: ArrayLike<number>): { rotation: number; position: number } {
+	let rotation = 0
+	for (let c = 0; c < 3; c++) {
+		const length = Math.hypot(b[c]!, b[4 + c]!, b[8 + c]!)
+		rotation = Math.max(rotation, Math.hypot(a[c]! - b[c]!, a[4 + c]! - b[4 + c]!, a[8 + c]! - b[8 + c]!) / Math.max(length, VANISH))
+	}
+	return { rotation, position: Math.hypot(a[3]! - b[3]!, a[7]! - b[7]!, a[11]! - b[11]!) }
+}
+
 // Frames where one bone's runs end, from 0 to the last frame. The run from k to j is one write at frame k + 1 with the
 // pose of frame j, interpolated over j − k ticks, and covers at most `span` ticks. poses: each frame's written values.
+// A client that takes in two ticks' writes between two of its ticks keeps only the second, and starts the run from
+// where the one-tick run before it started. The run then has to hold from there too, give or take its own largest
+// change in a tick, so that a bone hidden or moved at once is not shown going there over the whole run. The first run,
+// whose start is the pose before play or the end of the loop, lasts one tick.
 export function runEnds(poses: ArrayLike<number>[], tolerance: Tolerance, span: number): number[] {
-	const rotation = tolerance.rotation * DEGREE
+	const radians = tolerance.rotation * DEGREE
 	const splits = poses.map(split)
+	const steps = poses.slice(1).map((pose, m) => change(poses[m]!, pose))
 	const last = poses.length - 1
-	const reproduces = (k: number, j: number) => {
-		for (let m = k + 1; m < j; m++) if (!within(splits[k]!, splits[j]!, (m - k) / (j - k), poses[m]!, tolerance.position, rotation)) return false
+	const holds = (from: number, k: number, j: number, position: number, rotation: number) => {
+		for (let m = k + 1; m < j; m++) if (!within(splits[from]!, splits[j]!, (m - k) / (j - k), poses[m]!, position, rotation)) return false
 		return true
 	}
 	const ends = [0]
 	let k = 0
 	while (k < last) {
+		const afterOneTick = k > 0 && k - ends[ends.length - 2]! === 1
 		let j = k + 1
-		while (j < last && j + 1 - k <= span && reproduces(k, j + 1)) j++
+		let fastest = k > 0 ? steps[k]! : { rotation: 0, position: 0 }
+		while (k > 0 && j < last && j + 1 - k <= span) {
+			fastest = { rotation: Math.max(fastest.rotation, steps[j]!.rotation), position: Math.max(fastest.position, steps[j]!.position) }
+			if (!holds(k, k, j + 1, tolerance.position, radians)) break
+			if (afterOneTick && !holds(k - 1, k, j + 1, tolerance.position + fastest.position, radians + fastest.rotation)) break
+			j++
+		}
 		ends.push(j)
 		k = j
 	}

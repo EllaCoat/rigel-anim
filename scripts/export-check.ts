@@ -29,6 +29,12 @@ import { blockbenchRunning, devBlockbench, evaluate, useFonts } from './devtools
 import { syntheticFontPack, syntheticRig } from './synthetic-rig'
 
 const WORLD_NAME = 'export-check'
+// tween calls whose commands are counted: the first frame, and the last of once and of eased, which writes every bone it moves on every frame.
+const COST_CASES = [
+	['curves', 0],
+	['once', 21],
+	['eased', 39],
+] as const
 const TOLERANCE = 2e-3
 // Locators are written with 4 decimals, and ^ turns them with Minecraft's sine table (about 1e-4 per block).
 const LOCATOR_TOLERANCE = 1e-3
@@ -153,6 +159,28 @@ class VariantState {
 interface Held {
 	values: number[]
 	duration: number
+}
+
+// What each bone of a rig holds on the server, kept by replaying the planned writes in the order the frames run.
+class Replay {
+	readonly held: Held[]
+	readonly cooldown: number[]
+	constructor(
+		private readonly plans: ReturnType<typeof thinnedPlans>,
+		rest: number[][],
+	) {
+		this.held = rest.map((values) => ({ values, duration: 1 }))
+		this.cooldown = rest.map(() => 0)
+	}
+
+	apply(a: number, f: number): void {
+		const plan = this.plans[a]!
+		for (const w of plan.frames[f] ?? []) {
+			this.held[w.bone] = { values: plan.values[w.pose]![w.bone]!, duration: plan.runs || f === 0 ? w.duration : this.held[w.bone]!.duration }
+			if (f === 0) this.cooldown[w.bone] = 0
+			else if (w.duration > 1) this.cooldown[w.bone] = f + w.duration - 1
+		}
+	}
 }
 
 class Check {
@@ -293,11 +321,15 @@ async function main(): Promise<void> {
 	const target = { datapacks: { fs: nodeFs, dir: join(world, 'datapacks') }, resourcePack: { fs: nodeFs, dir: resources } }
 	for (const settings of rigs) await exportRig(target, source, settings)
 	writeCheckPack(join(world, 'datapacks'))
+	// debug function takes no arguments, so each counted tween call gets a function of its own.
+	for (const { rig } of [rigs[0]!, rigs[2]!])
+		for (const [name, frame] of COST_CASES)
+			writeFileSync(join(world, 'datapacks/check/data/check/functions', `cost_${rig}_${name}.mcfunction`), `function rigel:${rig}/tween {ID:${source.animations.findIndex((a) => a.name === name)},ticks:5,frame:${frame}}\n`)
 
 	if (shots) {
 		rmSync(shots, { recursive: true, force: true })
 		mkdirSync(shots, { recursive: true })
-		for (const pack of ['synthetic', 'rigel', 'check']) cpSync(join(world, 'datapacks', pack), join(shots, 'datapacks', pack), { recursive: true })
+		for (const pack of ['synthetic', 'thinned', 'rigel', 'check']) cpSync(join(world, 'datapacks', pack), join(shots, 'datapacks', pack), { recursive: true })
 		cpSync(resources, join(shots, 'resources'), { recursive: true })
 		for (const [path, content] of Object.entries(syntheticFontPack())) {
 			mkdirSync(dirname(join(shots, 'font', path)), { recursive: true })
@@ -305,6 +337,7 @@ async function main(): Promise<void> {
 		}
 		writeFileSync(join(shots, 'synthetic.bbmodel'), JSON.stringify(model))
 		writeFileSync(join(shots, 'spec.json'), JSON.stringify(shotSpec(), null, '\t'))
+		writeFileSync(join(shots, 'spec-tween.json'), JSON.stringify(tweenShotSpec(), null, '\t'))
 	}
 	rmSync(resources, { recursive: true, force: true })
 
@@ -480,6 +513,8 @@ async function main(): Promise<void> {
 		report.displays = await checkDisplays(check, source, bone)
 
 		report.thinned = await checkThinned(check, source, rigs[2]!, world)
+		report.tween = { thinned: await checkTween(check, source, rigs[2]!, world, '4.0 -60.0 0.0'), full: await checkTween(check, source, rigs[0]!, world, '0.0 -60.0 0.0') }
+		check.server.send('function rigel:thinned/kill')
 
 		// tp moves the root (the bones ride along) and turns every bone, pitch included.
 		server.send('execute positioned 10.5 -60.0 3.25 rotated 90 30 run function rigel:synthetic/tp')
@@ -623,15 +658,9 @@ async function checkThinned(check: Check, source: RigSource, settings: RigSettin
 
 	const models = renderables(source).flatMap((r, i) => (r.display ? [] : [bone(i)]))
 	const base = await check.cmds(models)
-	const held: Held[] = rest.map((values) => ({ values, duration: 1 }))
-	const cooldown = rest.map(() => 0)
-	const apply = (a: number, f: number) => {
-		for (const w of plans[a]!.frames[f]!) {
-			held[w.bone] = { values: plans[a]!.values[w.pose]![w.bone]!, duration: plans[a]!.runs || f === 0 ? w.duration : held[w.bone]!.duration }
-			if (f === 0) cooldown[w.bone] = 0
-			else if (w.duration > 1) cooldown[w.bone] = f + w.duration - 1
-		}
-	}
+	const replay = new Replay(plans, rest)
+	const { held, cooldown } = replay
+	const apply = (a: number, f: number) => replay.apply(a, f)
 	const compare = async (label: string) => {
 		for (let b = 0; b < bones; b++) {
 			const got = await check.display(bone(b))
@@ -740,6 +769,231 @@ async function checkThinned(check: Check, source: RigSource, settings: RigSettin
 	return { longWrites: long, pausedIn: { animation: a, frame }, wrappedIn: loop }
 }
 
+interface TweenCase {
+	what: string
+	animation: string
+	frame: number
+	ticks: number
+	// Steps after the call; by default until `after` steps past the arrival.
+	steps?: number
+	after?: number
+	// Pauses after this step, holds two steps and restarts.
+	pauseAt?: number
+	// Calls with storage rigel:<rig> Argument.
+	storage?: boolean
+}
+
+// tween from rest, playing, paused, stopped and waiting states: every bone holds the frame's pose with the tween's length
+// until it arrives, then what playing the animation holds at the same frame, a bone inside a moving run finishing the
+// run on time. The variants of frames up to the tween's arrive with it, with the function of only one on it; the
+// locators move to the frame at once.
+async function checkTween(check: Check, source: RigSource, settings: RigSettings, world: string, spawnAt: string) {
+	const writesOf = (name: string) => variantWrites(world, settings.rig, name)
+	const rewritten = (name: string) => new Set(writesOf(name).map((w) => Number.parseInt(w.uuid.split('-').at(-1)!, 16) - 1))
+	const plans = thinnedPlans(source, settings, rewritten)
+	const expected = expectations(source)
+	const bones = expected.bones
+	const bone = (b: number) => uuidString(settings.id, b + 1)
+	const self = `$Rigel.${settings.rig}`
+	const fn = (name: string) => `function rigel:${settings.rig}/${name}`
+	const fail = (message: string) => check.failures.push(`tween ${settings.rig}: ${message}`)
+	const index = (name: string) => source.animations.findIndex((a) => a.name === name)
+	const models = renderables(source).flatMap((r, i) => (r.display ? [] : [bone(i)]))
+	const onApply = (v: string | undefined) => (v && source.variants.find((x) => x.name === v)?.onApply ? 1 : 0)
+	const locatorNames = (() => {
+		const taken = new Set<string>()
+		for (const b of source.bones) if (b.display) uniqueName(b.name, taken)
+		return source.locators.map((l) => uniqueName(l.name, taken))
+	})()
+	await check.result(`execute positioned ${spawnAt} rotated 0 0 run ${fn('spawn')}`)
+	check.server.send(fn('variant/default'))
+	await check.server.sync()
+	const variants = new VariantState(await check.cmds(models), writesOf)
+	let state = new Replay(plans, expected.rest)
+	let shadow = 1
+	// The shadow_strength of the last tween; each one takes the other of .998 and .997, starting with .998.
+	let tweened = 0.997
+
+	const compare = async (label: string) => {
+		for (let b = 0; b < bones; b++) {
+			const got = await check.display(bone(b))
+			if (!got) {
+				fail(`${label} bone ${b}: missing`)
+				continue
+			}
+			const d = maxDiff(got.matrix, state.held[b]!.values)
+			if (d > TOLERANCE) fail(`${label} bone ${b}: off by ${d.toFixed(4)}`)
+			if (got.duration !== state.held[b]!.duration) fail(`${label} bone ${b}: interpolation_duration ${got.duration}, expected ${state.held[b]!.duration}`)
+			if (got.cooldown !== state.cooldown[b]) fail(`${label} bone ${b}: PortalCooldown ${got.cooldown}, expected ${state.cooldown[b]}`)
+			if (Math.abs(got.shadow - shadow) > 1e-6) fail(`${label} bone ${b}: shadow_strength ${got.shadow}, expected ${shadow}`)
+		}
+		const cmds = await check.cmds(models)
+		for (const uuid of models) if (cmds[uuid] !== variants.want[uuid]) fail(`${label}: ${uuid} holds model ${cmds[uuid]}, expected ${variants.want[uuid]}`)
+	}
+
+	// The frame the server runs m ticks after the one a tween arrives at, if any.
+	const after = (a: number, t: number, m: number): number | 'rest' | undefined => {
+		const { loop, ticks: n } = plans[a]!
+		const x = t + m
+		if (loop === 'loop' && n > 0) return x <= n ? x : ((x - 1) % n) + 1
+		if (x <= n) return x
+		return x === n + 1 && loop === 'once' ? 'rest' : undefined
+	}
+
+	const run = async (c: TweenCase) => {
+		const a = index(c.animation)
+		const plan = plans[a]!
+		const n = plan.ticks
+		const t = plan.loop === 'loop' && n > 0 ? ((c.frame % n) + n) % n : Math.min(Math.max(c.frame, 0), n)
+		const normal = new Replay(plans, expected.rest)
+		for (let f = 0; f <= t; f++) normal.apply(a, f)
+		const moving = (b: number) => normal.cooldown[b]! > t
+		let applied = (await check.score('$Applied', 'Rigel.Temp')) ?? 0
+		const args = `{ID:${a},ticks:${c.ticks},frame:${c.frame}}`
+		if (c.storage) check.server.send(`data modify storage rigel:${settings.rig} Argument set value ${args}`)
+		if ((await check.result(c.storage ? `${fn('tween')} with storage rigel:${settings.rig} Argument` : `${fn('tween')} ${args}`)) === 0) fail(`${c.what}: tween failed`)
+		state = new Replay(plans, expected.rest)
+		for (let b = 0; b < bones; b++) {
+			state.held[b] = { values: moving(b) ? plan.values[t]![b]! : normal.held[b]!.values, duration: c.ticks }
+			state.cooldown[b] = t
+		}
+		tweened = tweened === 0.998 ? 0.997 : 0.998
+		shadow = tweened
+		for (const [l] of source.locators.entries()) {
+			const got = await check.locator(settings.rig, locatorNames[l]!)
+			const d = got ? maxDiff(got, expected.locators(a, t)[l]!) : Infinity
+			if (d > LOCATOR_TOLERANCE) fail(`${c.what}: locator ${locatorNames[l]} off by ${d.toFixed(4)} on the tween's tick`)
+		}
+		const steps = c.steps ?? c.ticks + 1 + (c.after ?? 2)
+		for (let s = 0; s <= steps; s++) {
+			if (s > 0) await check.step()
+			// The first step keeps the tick of the call; the tick that leaves Rigel.Wait at 1 is the last before arriving.
+			const wait = s <= 1 ? c.ticks : Math.max(0, c.ticks - (s - 1))
+			if (s === c.ticks + 1) {
+				if (!plan.runs) for (let b = 0; b < bones; b++) state.held[b] = { ...state.held[b]!, duration: 1 }
+				state.cooldown.fill(0)
+				for (let b = 0; b < bones; b++) {
+					if (!moving(b)) continue
+					const end = normal.cooldown[b]!
+					state.held[b] = { values: normal.held[b]!.values, duration: end - t }
+					if (end - t > 1) state.cooldown[b] = end
+				}
+				for (const [k, v] of [...plan.calls].sort(([x], [y]) => x - y)) if (k <= t) variants.apply(v)
+				applied += onApply(plan.calls.get(t))
+			}
+			if (s > c.ticks) {
+				const f = after(a, t, s - c.ticks)
+				if (f === 'rest') expected.rest.forEach((values, b) => (state.held[b] = { values, duration: 1 }))
+				else if (f !== undefined) {
+					state.apply(a, f)
+					variants.apply(plan.calls.get(f))
+					applied += onApply(plan.calls.get(f))
+				}
+			}
+			await compare(`${c.what} step ${s}`)
+			if (s <= c.ticks) {
+				const frame = await check.score(self, 'Rigel.Frame')
+				const waiting = await check.score(self, 'Rigel.Wait')
+				if (frame !== t || waiting !== wait) fail(`${c.what} step ${s}: Rigel.Frame ${frame} and Rigel.Wait ${waiting}, expected ${t} and ${wait}`)
+			}
+			if (s === c.pauseAt) {
+				if ((await check.result(fn('pause'))) === 0) fail(`${c.what}: pause failed`)
+				for (let b = 0; b < bones; b++) state.held[b] = { ...state.held[b]!, duration: HOLD }
+				shadow = 0.999
+				await check.step(2)
+				await compare(`${c.what} paused`)
+				if ((await check.result(fn('restart'))) === 0) fail(`${c.what}: restart failed`)
+				// While waiting, every bone reaches the tween's frame as the tween arrives, Rigel.Wait ticks away; the client
+				// takes a tick before it gets the length. After arriving, each bone finishes its run, as after a pause in play.
+				const now = s > c.ticks ? after(a, t, s - c.ticks) : undefined
+				if (s > c.ticks && typeof now !== 'number') fail(`${c.what}: paused after the animation ended`)
+				// Rigel.Frame is 0 after a loop's last frame.
+				const at = now === 0 || (plan.loop === 'loop' && now === plan.ticks) ? Infinity : (now ?? 0)
+				for (let b = 0; b < bones; b++) state.held[b] = { ...state.held[b]!, duration: s > c.ticks ? Math.max(1, state.cooldown[b]! - at) : Math.max(1, wait - 1) }
+				shadow = 1
+				await compare(`${c.what} restarted`)
+			}
+		}
+		const got = (await check.score('$Applied', 'Rigel.Temp')) ?? 0
+		if (got !== applied) fail(`${c.what}: the variant function count is ${got}, expected ${applied}`)
+		return t
+	}
+
+	// Plays an animation for some steps, following the variants its frames apply.
+	const play = async (name: string, steps: number) => {
+		const a = index(name)
+		check.server.send(`${fn('play')} {ID:${a}}`)
+		for (let s = 0; s <= steps; s++) {
+			if (s > 0) await check.step()
+			const called = frameAt(plans[a]!.loop, plans[a]!.ticks, s)
+			if (called !== undefined) variants.apply(plans[a]!.calls.get(called))
+		}
+	}
+
+	// The frame of once with the most bones inside a moving run, past the first frames whose runs are all one tick.
+	const once = index('once')
+	const entry = (() => {
+		let best = { frame: 10, bones: 0 }
+		for (let f = 4; f < plans[once]!.ticks; f++) {
+			const r = new Replay(plans, expected.rest)
+			for (let g = 0; g <= f; g++) r.apply(once, g)
+			const count = r.cooldown.filter((c) => c > f).length
+			if (count > best.bones) best = { frame: f, bones: count }
+		}
+		return best
+	})()
+	if (settings.thin && entry.bones === 0) fail('no frame of once inside a moving run to enter')
+
+	const report: Record<string, unknown> = { entry }
+	await run({ what: 'from rest or stopped', animation: 'squash', frame: 0, ticks: 3 })
+	await play('curves', 9)
+	await run({ what: 'from playing, into a moving run, paused after arriving', animation: 'once', frame: entry.frame, ticks: 5, after: 4, pauseAt: 7 })
+	await run({ what: 'waiting, to the same animation', animation: 'once', frame: 6, ticks: 6, steps: 3 })
+	await run({ what: 'after a tween waiting, with storage', animation: 'once', frame: 1, ticks: 4, storage: true })
+	await play('squash', 6)
+	if ((await check.result(fn('pause'))) === 0) fail('pause before the paused case failed')
+	await run({ what: 'from paused, paused while waiting', animation: 'curves', frame: 0, ticks: 6, pauseAt: 3, after: 3 })
+	check.server.send(fn('stop'))
+	report.pastTheEnd = await run({ what: 'from stopped, past the end of a hold animation', animation: 'hide', frame: 99, ticks: 3, after: 2 })
+	if ((await check.score(self, 'Rigel.Playing')) !== 0) fail('a tween to the last frame of a hold animation did not stop it')
+	report.wrapped = await run({ what: 'past the end of a loop', animation: 'squash', frame: 25, ticks: 2 })
+	// Paused at frame 3 after the loop comes round, before the frame tweened to.
+	await run({ what: 'into an animation without runs, paused a loop later', animation: 'eased', frame: 7, ticks: 4, steps: 42, pauseAt: 40 })
+
+	// play while a tween waits drops the wait and writes f/0.
+	await run({ what: 'before play', animation: 'curves', frame: 3, ticks: 10, steps: 3 })
+	check.server.send(`${fn('play')} {ID:${index('squash')}}`)
+	await check.server.sync()
+	state = new Replay(plans, expected.rest)
+	state.apply(index('squash'), 0)
+	shadow = 1
+	variants.apply(plans[index('squash')]!.calls.get(0))
+	await compare('play while waiting')
+	if ((await check.score(self, 'Rigel.Wait')) !== 0) fail('play left Rigel.Wait')
+
+	if ((await check.result(`${fn('tween')} {ID:0,ticks:0,frame:0}`)) !== 0) fail('tween with ticks 0 did not fail')
+	if ((await check.result(`${fn('tween')} {ID:99,ticks:1,frame:0}`)) !== 0) fail('tween with an unknown ID did not fail')
+
+	// The commands one tween call runs, from a trace of debug function.
+	const cost: Record<string, number> = {}
+	for (const [name, frame] of COST_CASES) {
+		const m = await check.server.run(`debug function check:cost_${settings.rig}_${name}`, /to output file (debug-trace-[\w.-]+\.txt)/)
+		// The trace is logged before the command ends, which closes the file.
+		await check.server.sync()
+		const trace = join(SERVER_DIR, 'debug', m[1]!)
+		const count = readFileSync(trace, 'utf8')
+			.split('\n')
+			.filter((line) => /^\s*\[C\]/.test(line)).length
+		rmSync(trace)
+		if (count === 0) fail(`the trace of a tween to ${name} ${frame} holds no commands`)
+		cost[`${name} ${frame}`] = count
+	}
+	report.commands = cost
+	check.server.send(fn('stop'))
+	await check.server.sync()
+	return report
+}
+
 // Rest pose and poses of each animation, from the front and from a corner, for mc-shot.
 function shotSpec() {
 	const views = [
@@ -775,6 +1029,39 @@ function shotSpec() {
 		datapacks: ['datapacks/synthetic', 'datapacks/rigel', 'datapacks/check'],
 		resourcePacks: ['resources', 'font'],
 		setup: ['execute positioned 0.0 -60.0 0.0 rotated 0 0 run function rigel:synthetic/spawn'],
+		views,
+		model: 'synthetic.bbmodel',
+	}
+}
+
+// tween on the thinned rig, whose runs make the client interpolate for long, for mc-shot.
+function tweenShotSpec() {
+	const front = { eye: [0, 1.2, 3.5], yaw: 180, pitch: 10 }
+	const tween = (from: string, at: number, ticks: number, frame: number, after: number, pause?: { at: number; hold: number }) => ({ from, at, ticks, frame, after, ...(pause && { pause }) })
+	const into = (after: number, pause?: { at: number; hold: number }) => tween('curves', 8, 10, 10, after, pause)
+	const views = [
+		// The ice (a block display) has shrunk over a run from tick 4 to tick 10; a tween to tick 10 writes it the same pose.
+		// It stays small instead of shrinking over the run again.
+		{ name: 'squash-10', eye: [2.5, 2.0, 2.5], yaw: 135, pitch: 20, pose: { animation: 'squash', tick: 10, play: true } },
+		{ name: 'tween-same-pose', eye: [2.5, 2.0, 2.5], yaw: 135, pitch: 20, pose: { animation: 'squash', tick: 10, play: true, tween: tween('squash', 10, 10, 10, 1) } },
+		// From curves at tick 8 into once at tick 10, inside its body's run, over 10 ticks: before, one tick in, halfway,
+		// paused halfway (as halfway), arrived, arrived after a pause (as arrived), and three ticks after arriving.
+		{ name: 'curves-8', ...front, pose: { animation: 'curves', tick: 8, play: true } },
+		{ name: 'tween-1', ...front, pose: { animation: 'once', tick: 10, play: true, tween: into(1) } },
+		{ name: 'tween-halfway', ...front, pose: { animation: 'once', tick: 10, play: true, tween: into(5) } },
+		{ name: 'tween-paused', ...front, pose: { animation: 'once', tick: 10, play: true, tween: into(5, { at: 5, hold: 5 }) } },
+		{ name: 'tween-arrived', ...front, pose: { animation: 'once', tick: 10, play: true, tween: into(10) } },
+		{ name: 'tween-restarted', ...front, pose: { animation: 'once', tick: 10, play: true, tween: into(10, { at: 5, hold: 5 }) } },
+		{ name: 'tween-arrived-3', ...front, pose: { animation: 'once', tick: 13, play: true, tween: into(13) } },
+		// Back to the start of a loop, two ticks after arriving.
+		{ name: 'tween-loop-2', ...front, pose: { animation: 'curves', tick: 2, play: true, tween: tween('once', 6, 6, 0, 8) } },
+	]
+	return {
+		origin: [0, -60, 0],
+		rig: 'thinned',
+		datapacks: ['datapacks/thinned', 'datapacks/rigel', 'datapacks/check'],
+		resourcePacks: ['resources', 'font'],
+		setup: ['execute positioned 0.0 -60.0 0.0 rotated 0 0 run function rigel:thinned/spawn'],
 		views,
 		model: 'synthetic.bbmodel',
 	}

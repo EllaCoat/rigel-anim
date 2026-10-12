@@ -5,11 +5,14 @@ export type Vec3 = [number, number, number]
 // An animation at a tick: Blockbench shows it, and Minecraft calls the rig's frame functions up to the tick. With
 // `play`, Minecraft plays it on a frozen server and steps to the tick, so the client shows what interpolation makes
 // of it, as a thinned rig needs. `pause` pauses at frame `at` for `hold` ticks, then restarts if `tick` is later.
+// `tween` (with play) instead plays `from` to its frame `at`, tweens to this animation's `frame` over `ticks` and
+// steps `after` ticks, its `pause` pausing `at` of them in for `hold` ticks; Blockbench still shows this animation at `tick`.
 export interface Pose {
 	animation: string
 	tick: number
 	play?: boolean
 	pause?: { at: number; hold: number }
+	tween?: { from: string; at: number; ticks: number; frame: number; after: number; pause?: { at: number; hold: number } }
 }
 
 export interface View {
@@ -96,6 +99,24 @@ function view(value: unknown, i: number): View {
 				fail(`${at}.pose.pause needs play and must be { at: tick ≤ pose.tick, hold: ticks }`)
 			out.pose.pause = { at: pause.at as number, hold: pause.hold as number }
 		}
+		if (p.tween !== undefined) {
+			const t = p.tween as Record<string, unknown>
+			const whole = (x: unknown) => Number.isInteger(x) && (x as number) >= 0
+			const pause = t.pause as Record<string, unknown> | undefined
+			if (
+				!out.pose.play ||
+				out.pose.pause ||
+				typeof t.from !== 'string' ||
+				!whole(t.at) ||
+				!whole(t.frame) ||
+				!whole(t.after) ||
+				!(whole(t.ticks) && (t.ticks as number) > 0) ||
+				(pause !== undefined && !(whole(pause.at) && (pause.at as number) > 0 && (pause.at as number) <= (t.after as number) && whole(pause.hold)))
+			)
+				fail(`${at}.pose.tween needs play without pause and must be { from: name, at, ticks ≥ 1, frame, after, pause?: { at: 1 to after, hold } }`)
+			out.pose.tween = { from: t.from, at: t.at as number, ticks: t.ticks as number, frame: t.frame as number, after: t.after as number }
+			if (pause) out.pose.tween.pause = { at: pause.at as number, hold: pause.hold as number }
+		}
 	}
 	return out
 }
@@ -165,6 +186,19 @@ function posing(spec: Spec, animations: { name: string; length: number }[], view
 	// One more step with Rigel.Playing 0, which writes nothing unlike stop and pause, shows them.
 	const playing = (n: number) => `scoreboard players set $Rigel.${spec.rig} Rigel.Playing ${n}`
 	const settle = [playing(0), 'tick step 1']
+	const tween = view.pose.tween
+	if (tween) {
+		const from = animations.findIndex((a) => a.name === tween.from)
+		if (from < 0) fail(`views ${view.name}: the model has no animation "${tween.from}"`)
+		// The first step after the tween keeps the tick it was called on, like play's. While it waits, nothing is written
+		// for the client to catch up with before a pause.
+		const step = (n: number) => (n > 0 ? [`tick step ${n}`] : [])
+		const p = tween.pause
+		const steps = p
+			? [...step(p.at), call('pause'), ...step(p.hold), ...(tween.after > p.at ? [call('restart'), ...step(tween.after - p.at)] : [])]
+			: step(tween.after)
+		return ['tick freeze', call('stop'), `${call('play')} {ID:${from}}`, `tick step ${tween.at + 1}`, ...settle, playing(1), `${call('tween')} {ID:${index},ticks:${tween.ticks},frame:${tween.frame}}`, ...steps, ...settle]
+	}
 	const pause = view.pose.pause
 	if (!pause) return [...start, `tick step ${tick + 1}`, ...settle]
 	const at = Math.min(pause.at, tick)

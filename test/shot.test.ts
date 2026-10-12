@@ -102,6 +102,52 @@ describe('poses', () => {
 		expect(poseCommands(late, animations, late.views[0]!).slice(3)).toEqual(['tick step 4', 'scoreboard players set $Rigel.axia Rigel.Playing 0', 'tick step 1', 'scoreboard players set $Rigel.axia Rigel.Playing 1', 'function rigel:axia/pause', 'tick step 2', 'scoreboard players set $Rigel.axia Rigel.Playing 0', 'tick step 1'])
 	})
 
+	test('a tweened pose plays the animation it starts from, tweens on the frozen server and steps on', () => {
+		const tweened = parseSpec({ ...spec, views: [{ ...view, name: 'tweened', pose: { animation: 'walk', tick: 2, play: true, tween: { from: 'idle', at: 7, ticks: 4, frame: 1, after: 5 } } }] })
+		expect(poseCommands(tweened, animations, tweened.views[0]!)).toEqual([
+			'tick freeze',
+			'function rigel:axia/stop',
+			'function rigel:axia/play {ID:0}',
+			'tick step 8',
+			'scoreboard players set $Rigel.axia Rigel.Playing 0',
+			'tick step 1',
+			'scoreboard players set $Rigel.axia Rigel.Playing 1',
+			'function rigel:axia/tween {ID:1,ticks:4,frame:1}',
+			'tick step 5',
+			'scoreboard players set $Rigel.axia Rigel.Playing 0',
+			'tick step 1',
+		])
+		const unknown = parseSpec({ ...spec, views: [{ ...view, name: 'unknown', pose: { animation: 'walk', tick: 2, play: true, tween: { from: 'run', at: 0, ticks: 1, frame: 0, after: 0 } } }] })
+		expect(() => poseCommands(unknown, animations, unknown.views[0]!)).toThrow('the model has no animation "run"')
+	})
+
+	test('a tween paused while it waits holds, then restarts for the steps left', () => {
+		const tween = { from: 'idle', at: 7, ticks: 6, frame: 1, after: 6, pause: { at: 2, hold: 3 } }
+		const paused = parseSpec({ ...spec, views: [{ ...view, name: 'paused', pose: { animation: 'walk', tick: 1, play: true, tween } }] })
+		expect(poseCommands(paused, animations, paused.views[0]!).slice(7)).toEqual([
+			'function rigel:axia/tween {ID:1,ticks:6,frame:1}',
+			'tick step 2',
+			'function rigel:axia/pause',
+			'tick step 3',
+			'function rigel:axia/restart',
+			'tick step 4',
+			'scoreboard players set $Rigel.axia Rigel.Playing 0',
+			'tick step 1',
+		])
+		const held = parseSpec({ ...spec, views: [{ ...view, name: 'held', pose: { animation: 'walk', tick: 1, play: true, tween: { ...tween, after: 2 } } }] })
+		expect(poseCommands(held, animations, held.views[0]!).slice(8, -2)).toEqual(['tick step 2', 'function rigel:axia/pause', 'tick step 3'])
+	})
+
+	test.each([
+		[{ animation: 'idle', tick: 2, tween: { from: 'walk', at: 0, ticks: 2, frame: 0, after: 0 } }],
+		[{ animation: 'idle', tick: 2, play: true, tween: { from: 'walk', at: 0, ticks: 0, frame: 0, after: 0 } }],
+		[{ animation: 'idle', tick: 2, play: true, pause: { at: 1, hold: 1 }, tween: { from: 'walk', at: 0, ticks: 2, frame: 0, after: 0 } }],
+		[{ animation: 'idle', tick: 2, play: true, tween: { from: 'walk', at: 0, ticks: 2, frame: 0, after: 3, pause: { at: 0, hold: 1 } } }],
+		[{ animation: 'idle', tick: 2, play: true, tween: { from: 'walk', at: 0, ticks: 2, frame: 0, after: 3, pause: { at: 4, hold: 1 } } }],
+	])('rejects the tween %j', (pose) => {
+		expect(() => parseSpec({ origin: [0, 0, 0], rig: 'axia', model: 'rig.bbmodel', views: [{ ...view, pose }] })).toThrow('views[0].pose.tween')
+	})
+
 	test.each([
 		[{ animation: 'idle', tick: 2, pause: { at: 1, hold: 1 } }],
 		[{ animation: 'idle', tick: 2, play: true, pause: { at: 3, hold: 1 } }],

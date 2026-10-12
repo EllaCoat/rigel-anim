@@ -107,7 +107,7 @@ describe('variant keyframes', () => {
 	const textures = [texture('skin', 32), texture('skin_alt', 32), texture('eye', 16), texture('eye_closed', 16)]
 	const bones = [bone('Body', 0), bone('Head', 2)]
 	const variants = [{ name: 'blink', textures: [[2, 3]] as [number, number][], excluded: [], onApply: '' }]
-	const call = (name: string) => `function rigel:axia/variant/${name}`
+	const call = (name: string) => `execute unless score $Rigel.Seek Rigel.Temp matches 1 run function rigel:axia/variant/${name}`
 	const warm = 'execute if score $Rigel.axia Rigel.Warming matches 1 run return 0'
 	const build = (animation: Partial<AnimationSource>, overrides: Partial<RigSource> = {}, thin = false) =>
 		buildExport(rig({ bones, textures, variants, animations: [{ ...still(2, [[], [], [], [], []]), ...animation }], ...overrides }), thin ? { ...settings, thin: { position: 0.01, rotation: 1 } } : settings, undefined)

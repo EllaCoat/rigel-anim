@@ -73,6 +73,29 @@ export function planFrames(loop: Loop, poses: Poses, runs?: (bone: number) => Ru
 	return frames
 }
 
+// A tween to frame t runs frames 0 to t, which leaves a bone inside a moving run at its run's end. These bones, by t: the
+// tween writes them t's pose, and on arriving the rest of the run, as a write at frame t + 1 would.
+export function planEntries(loop: Loop, poses: Poses, runs: (bone: number) => Runs): Map<number, FrameWrite[]> {
+	const last = poses.length - 1
+	const at = (f: number) => (f === last && loop === 'loop' ? 0 : f)
+	const entries = new Map<number, FrameWrite[]>()
+	const bones = poses[0]?.length ?? 0
+	for (let bone = 0; bone < bones; bone++) {
+		const { ends } = runs(bone)
+		for (let i = 1; i < ends.length; i++) {
+			const k = ends[i - 1]!
+			const j = ends[i]!
+			if (poses[at(j)]![bone] === poses[at(k)]![bone]) continue
+			for (let t = k + 1; t < j; t++) {
+				const list = entries.get(t) ?? []
+				list.push({ bone, pose: at(j), duration: j - t })
+				entries.set(t, list)
+			}
+		}
+	}
+	return entries
+}
+
 export interface WarmItem {
 	animation: number
 	frame: number

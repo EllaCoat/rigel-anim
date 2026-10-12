@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { compose, normalizeQuat, quatToMat3, type Quat, type Vec3 } from '../src/bake/matrix'
 import { buildExport, ExportError, normalizeItem, settingsProblems } from '../src/export/build'
 import { commonPack, MARKER, rigPack, uuidString, type RigPackInput } from '../src/export/datapack'
-import { formatFloat, planChunks, planFrames, poseString } from '../src/export/frames'
+import { formatFloat, planChunks, planEntries, planFrames, poseString } from '../src/export/frames'
 import { boneScale, itemModel } from '../src/export/item-model'
 import { mergeItemModel } from '../src/export/resource-pack'
 import type { AnimationSource, BoneSource, Files, Loop, RigSettings, RigSource, TextureSource, WarmPriority } from '../src/export/types'
@@ -144,6 +144,18 @@ describe('frames', () => {
 		expect(planFrames('hold', poses, () => ({ ends: [0, 1, 2], snaps: [2] }))).toEqual([[w(0, 0), w(1, 0), w(2, 0)], [w(1, 1)], [w(0, 2, 0)]])
 	})
 
+	test('a tween to a frame inside a moving run finishes the run from there; a still run and run ends need nothing', () => {
+		const four = [['a', 'p', 's'], ['b', 'q', 's'], ['c', 'r', 's'], ['d', 'X', 's']]
+		const runs = (b: number) => ({ ends: b === 0 ? [0, 1, 2, 3] : [0, 3], snaps: [] })
+		expect([...planEntries('hold', four, runs)]).toEqual([
+			[1, [w(1, 3, 2)]],
+			[2, [w(1, 3, 1)]],
+		])
+		// A loop's last frame shows frame 0, so there bone 1 goes from p back to p, and from q to p.
+		expect(planEntries('loop', four, runs).size).toBe(0)
+		expect([...planEntries('loop', four, (b) => ({ ends: b === 1 ? [0, 1, 3] : [0, 1, 2, 3], snaps: [] }))]).toEqual([[2, [w(1, 0, 1)]]])
+	})
+
 	test('chunks hold whole frames up to the line limit', () => {
 		const items = (sizes: number[]) => sizes.map((lines, frame) => ({ animation: 0, frame, lines }))
 		expect(planChunks(items([250, 250, 250, 250, 250, 250]), 1000).map((c) => c.length)).toEqual([4, 2])
@@ -183,16 +195,17 @@ describe('data pack', () => {
 	test('frame functions write the changed bones and end each loop mode', () => {
 		const warm = 'execute if score $Rigel.axia Rigel.Warming matches 1 run return 0'
 		const write = (n: number, values: string) => `$data merge entity 1a2b3c4d-0-0-0-${n} {transformation:[${values}$(_)`
-		expect(lines(files, fn('frames/0/0'))).toEqual([warm, write(1, 'a'), write(2, 'b')])
+		const first = (n: number, values: string) => `$data merge entity 1a2b3c4d-0-0-0-${n} {shadow_strength:1f,PortalCooldown:0,interpolation_duration:1,transformation:[${values}$(s)`
+		expect(lines(files, fn('frames/0/0'))).toEqual([warm, first(1, 'a'), first(2, 'b')])
 		expect(lines(files, fn('frames/0/1'))).toEqual([warm, write(2, 'B')])
 		expect(lines(files, fn('frames/0/2'))).toEqual([warm, write(2, 'b'), 'scoreboard players set $Rigel.axia Rigel.Frame 0'])
 		expect(lines(files, fn('frames/1/1'))).toEqual([warm, write(1, 'C')])
 		expect(lines(files, fn('frames/1/2'))).toEqual([warm, 'function rigel:axia/rest', 'scoreboard players set $Rigel.axia Rigel.Playing 0'])
-		expect(lines(files, fn('frames/2/0'))).toEqual([warm, write(1, 'e'), write(2, 'f'), 'scoreboard players set $Rigel.axia Rigel.Playing 0'])
+		expect(lines(files, fn('frames/2/0'))).toEqual([warm, first(1, 'e'), first(2, 'f'), 'scoreboard players set $Rigel.axia Rigel.Playing 0'])
 	})
 
 	test('warm chunks follow priority, f/0 first, and register in load', () => {
-		const call = (a: number, f: number) => `function rigel:axia/frames/${a}/${f} with storage rigel:const FrameArgs`
+		const call = (a: number, f: number) => `function rigel:axia/frames/${a}/${f} with storage ${f === 0 ? 'rigel:axia' : 'rigel:const FrameArgs'}`
 		expect(lines(files, fn('warm/xhigh/0'))).toEqual([
 			'scoreboard players set $Rigel.axia Rigel.Warming 1',
 			call(1, 0),
@@ -218,7 +231,8 @@ describe('data pack', () => {
 		const play = lines(files, fn('play'))
 		expect(play.slice(0, 3)).toEqual(['# 0: idle', '# 1: swing', '# 2: down'])
 		expect(play).toContain('execute unless score $Rigel.ID Rigel.Temp matches 0..2 run return fail')
-		expect(play.at(-1)).toBe('$function rigel:axia/frames/$(ID)/0 with storage rigel:const FrameArgs')
+		expect(play).toContain('scoreboard players set $Rigel.axia Rigel.Wait 0')
+		expect(play.at(-1)).toBe('$function rigel:axia/frames/$(ID)/0 with storage rigel:axia')
 	})
 
 	test('spawn summons the root with every bone riding it', () => {
@@ -254,12 +268,10 @@ describe('data pack', () => {
 		expect(lines(rigPack(input({ id: 0xfedcba98 })), fn('spawn'))[1]).toContain(`UUID:[I;${0xfedcba98 | 0},0,0,0]`)
 	})
 
-	test('without runs over several ticks, stop, pause, restart and rest stay as they are', () => {
-		expect(lines(files, fn('stop'))).toEqual(['scoreboard players set $Rigel.axia Rigel.Playing 0'])
-		expect(lines(files, fn('pause'))).toHaveLength(2)
-		expect(lines(files, fn('restart'))).toHaveLength(2)
-		expect(files.has(fn('resume'))).toBe(false)
-		expect(lines(files, fn('rest'))[0]).toBe('data merge entity 1a2b3c4d-0-0-0-1 {transformation:[r0,0f,0f,0f,1f],start_interpolation:0}')
+	test('without runs over several ticks, a tween still interpolates for long, so stop, pause, restart and rest are those of a thinned rig', () => {
+		const thinned = rigPack(input({ animations: [animation('idle', 'hold', 'high', [['a', 'b'], ['a', 'B'], ['A', 'X']], (b) => (b === 1 ? [0, 2] : [0, 1, 2]))] }))
+		for (const name of ['stop', 'pause', 'restart', 'resume', 'rest']) expect(lines(files, fn(name))).toEqual(lines(thinned, fn(name)))
+		expect(lines(files, fn('rest'))[0]).toBe('data merge entity 1a2b3c4d-0-0-0-1 {interpolation_duration:1,transformation:[r0,0f,0f,0f,1f]}')
 	})
 
 	describe('with a run over several ticks', () => {
@@ -306,9 +318,11 @@ describe('data pack', () => {
 			const hold = 'execute as 1a2b3c4d-0-0-0-0 on passengers run data merge entity @s {shadow_strength:.999f,interpolation_duration:1000000000,start_interpolation:0}'
 			expect(lines(thinned, fn('stop'))).toEqual(['scoreboard players set $Rigel.axia Rigel.Playing 0', hold])
 			expect(lines(thinned, fn('pause')).at(-1)).toBe(hold)
-			expect(lines(thinned, fn('restart')).slice(-3)).toEqual([
+			expect(lines(thinned, fn('restart')).slice(-5)).toEqual([
 				'scoreboard players operation $Rigel.At Rigel.Temp = $Rigel.axia Rigel.Frame',
-				'execute if score $Rigel.At Rigel.Temp matches 0 run scoreboard players set $Rigel.At Rigel.Temp 2147483647',
+				'execute unless score $Rigel.axia Rigel.Wait matches 1.. if score $Rigel.At Rigel.Temp matches 0 run scoreboard players set $Rigel.At Rigel.Temp 2147483647',
+				'scoreboard players operation $Rigel.At Rigel.Temp -= $Rigel.axia Rigel.Wait',
+				'execute if score $Rigel.axia Rigel.Wait matches 1.. run scoreboard players add $Rigel.At Rigel.Temp 1',
 				'execute as 1a2b3c4d-0-0-0-0 on passengers run function rigel:axia/resume',
 			])
 			expect(lines(thinned, fn('resume'))).toEqual([
@@ -318,6 +332,99 @@ describe('data pack', () => {
 				'execute store result entity @s interpolation_duration int 1 run scoreboard players get $Rigel.Left Rigel.Temp',
 				'data merge entity @s {shadow_strength:1f,start_interpolation:0}',
 			])
+		})
+	})
+
+	describe('tween', () => {
+		// Bone 2 moves from b to X over a run from frame 0 to 3; bone 1 moves every tick.
+		const poses = [['a', 'b'], ['p', 'm'], ['q', 'n'], ['r', 'X']]
+		const runs = (b: number) => ({ ends: b === 1 ? [0, 3] : [0, 1, 2, 3], snaps: [] })
+		const thinIdle = { ...animation('idle', 'hold', 'high', poses), frames: planFrames('hold', poses, runs), entries: planEntries('hold', poses, runs), variants: new Map([[0, 'dark'], [2, 'lit']]) }
+		const variants = [
+			{ name: 'dark', writes: [{ passenger: 0, cmd: 7 }], onApply: '' },
+			{ name: 'lit', writes: [{ passenger: 0, cmd: 8 }], onApply: 'my:lit' },
+		]
+		const tweened = rigPack(input({ variants, animations: [thinIdle, animation('walk', 'loop', 'high', [['c', 'd'], ['C', 'd'], ['c', 'D']])] }))
+		const merge = (n: number, head: string, values: string) => `$data merge entity 1a2b3c4d-0-0-0-${n} {${head}transformation:[${values}$(_)`
+
+		test('tween checks the ID and the ticks, goes to the frame, and waits the ticks', () => {
+			const tween = lines(tweened, fn('tween'))
+			expect(tween).toContain('execute unless score $Rigel.ID Rigel.Temp matches 0..1 run return fail')
+			expect(tween).toContain('execute unless score $Rigel.Ticks Rigel.Temp matches 1.. run return fail')
+			expect(tween.slice(-12)).toEqual([
+				'$data modify storage rigel:axia Animation set value $(ID)',
+				'$function rigel:axia/tween/$(ID)',
+				'execute store result storage rigel:axia Tween.ticks int 1 run scoreboard players get $Rigel.Ticks Rigel.Temp',
+				'execute store result storage rigel:axia Tween.frame int 1 run scoreboard players get $Rigel.To Rigel.Temp',
+				'execute store success score $Rigel.Shade Rigel.Temp if data storage rigel:axia Tween{shadow:".998f"}',
+				'execute if score $Rigel.Shade Rigel.Temp matches 0 run data modify storage rigel:axia Tween.shadow set value ".998f"',
+				'execute if score $Rigel.Shade Rigel.Temp matches 1 run data modify storage rigel:axia Tween.shadow set value ".997f"',
+				'function rigel:axia/tween/blend with storage rigel:axia Tween',
+				'scoreboard players operation $Rigel.axia Rigel.Frame = $Rigel.To Rigel.Temp',
+				'scoreboard players operation $Rigel.axia Rigel.Wait = $Rigel.Ticks Rigel.Temp',
+				'scoreboard players set $Rigel.axia Rigel.Playing 1',
+				'execute store result score $Rigel.axia Rigel.PlayedAt run time query gametime',
+			])
+			expect(lines(tweened, fn('tween/blend'))).toEqual([
+				'$execute as 1a2b3c4d-0-0-0-0 on passengers run data merge entity @s {PortalCooldown:$(frame),interpolation_duration:$(ticks),start_interpolation:0,shadow_strength:$(shadow)}',
+			])
+		})
+
+		test('the tick waits out a tween and arrives with the next frame', () => {
+			expect(lines(tweened, fn('tick')).slice(3, 5)).toEqual([
+				'execute if score $Rigel.axia Rigel.Wait matches 2.. run return run scoreboard players remove $Rigel.axia Rigel.Wait 1',
+				'execute if score $Rigel.axia Rigel.Wait matches 1 run function rigel:axia/tween/arrive with storage rigel:axia',
+			])
+			expect(lines(tweened, fn('tween/arrive'))).toEqual(['scoreboard players set $Rigel.axia Rigel.Wait 0', '$function rigel:axia/tween/$(Animation)/arrive'])
+		})
+
+		test('a frame past the end is the last one, or wraps in a loop; frames 0 to it run with their variants held back', () => {
+			const seek = lines(tweened, fn('tween/0'))
+			expect(seek.slice(0, 2)).toEqual([
+				'execute if score $Rigel.To Rigel.Temp matches 4.. run scoreboard players set $Rigel.To Rigel.Temp 3',
+				'execute if score $Rigel.To Rigel.Temp matches ..-1 run scoreboard players set $Rigel.To Rigel.Temp 0',
+			])
+			expect(seek.slice(2, 7)).toEqual([
+				'scoreboard players set $Rigel.Seek Rigel.Temp 1',
+				'function rigel:axia/frames/0/0 with storage rigel:axia',
+				'scoreboard players set $Rigel.F Rigel.Temp 1',
+				'execute if score $Rigel.To Rigel.Temp matches 1.. run function rigel:axia/tween/seek',
+				'scoreboard players set $Rigel.Seek Rigel.Temp 0',
+			])
+			expect(lines(tweened, fn('tween/1')).slice(0, 2)).toEqual(['scoreboard players set $Rigel.Length Rigel.Temp 2', 'scoreboard players operation $Rigel.To Rigel.Temp %= $Rigel.Length Rigel.Temp'])
+			expect(lines(tweened, fn('frames/0/2'))).toContain('execute unless score $Rigel.Seek Rigel.Temp matches 1 run function rigel:axia/variant/lit')
+			// A hold animation's last frame stops it; a tween arriving there runs the frame after.
+			expect(lines(tweened, fn('frames/0/4'))).toEqual(['scoreboard players set $Rigel.axia Rigel.Playing 0'])
+			expect(tweened.has(fn('frames/1/3'))).toBe(false)
+		})
+
+		test("a bone inside a moving run gets the frame's pose, and on arriving the rest of the run", () => {
+			expect(lines(tweened, fn('tween/0')).slice(-2)).toEqual([
+				'execute if score $Rigel.To Rigel.Temp matches 1 run function rigel:axia/tween/0/into/1 with storage rigel:const FrameArgs',
+				'execute if score $Rigel.To Rigel.Temp matches 2 run function rigel:axia/tween/0/into/2 with storage rigel:const FrameArgs',
+			])
+			expect(lines(tweened, fn('tween/0/into/1'))).toEqual([merge(2, '', 'm')])
+			expect(lines(tweened, fn('tween/0/from/1'))).toEqual([merge(2, 'PortalCooldown:3,interpolation_duration:2,', 'X')])
+			expect(lines(tweened, fn('tween/0/from/2'))).toEqual([merge(2, 'interpolation_duration:1,', 'X')])
+			expect(lines(tweened, fn('tween/0/arrive')).slice(0, 3)).toEqual([
+				'execute as 1a2b3c4d-0-0-0-0 on passengers run data merge entity @s {PortalCooldown:0}',
+				'execute if score $Rigel.axia Rigel.Frame matches 1 run function rigel:axia/tween/0/from/1 with storage rigel:const FrameArgs',
+				'execute if score $Rigel.axia Rigel.Frame matches 2 run function rigel:axia/tween/0/from/2 with storage rigel:const FrameArgs',
+			])
+		})
+
+		test("arriving applies the variants of the frames up to the tween's, calling only the function of one on it", () => {
+			expect(lines(tweened, fn('tween/0/arrive')).slice(3)).toEqual([
+				'execute if score $Rigel.axia Rigel.Frame matches 0.. run function rigel:axia/variant/dark',
+				'execute if score $Rigel.axia Rigel.Frame matches 3.. run function rigel:axia/tween/quiet/lit',
+				'execute if score $Rigel.axia Rigel.Frame matches 2 run function rigel:axia/variant/lit',
+			])
+			expect(lines(tweened, fn('tween/quiet/lit'))).toEqual(['data merge entity 1a2b3c4d-0-0-0-1 {item:{tag:{CustomModelData:8}}}'])
+			expect(tweened.has(fn('tween/quiet/dark'))).toBe(false)
+		})
+
+		test('arriving clears the frame the tween left for restart, and without runs sets the interpolation length back to 1', () => {
+			expect(lines(tweened, fn('tween/1/arrive'))).toEqual(['execute as 1a2b3c4d-0-0-0-0 on passengers run data merge entity @s {interpolation_duration:1,PortalCooldown:0}'])
 		})
 	})
 

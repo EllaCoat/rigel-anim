@@ -282,9 +282,9 @@ async function main(): Promise<void> {
 	source.animations.forEach((a) => (a.priority = a.name === 'once' ? 'xhigh' : a.name === 'squash' ? 'low' : 'high'))
 	source.animations.find((a) => a.name === 'eased')!.thin = 'off'
 	const rigs: RigSettings[] = [
-		{ rig: 'synthetic', id: 0x5e17e000, item: 'minecraft:white_dye', chunkLines: 20, span: 20 },
-		{ rig: 'twin', id: 0x7e1a0001, item: 'minecraft:white_dye', chunkLines: 20, span: 20 },
-		{ rig: 'thinned', id: 0x7e1a0002, item: 'minecraft:white_dye', chunkLines: 20, span: 20, thin: { position: 0.01, rotation: 1 } },
+		{ rig: 'synthetic', id: 0x5e17e000, item: 'minecraft:white_dye', chunkLines: 20, span: 20, teleportDuration: 1 },
+		{ rig: 'twin', id: 0x7e1a0001, item: 'minecraft:white_dye', chunkLines: 20, span: 20, teleportDuration: 1 },
+		{ rig: 'thinned', id: 0x7e1a0002, item: 'minecraft:white_dye', chunkLines: 20, span: 20, teleportDuration: 1, thin: { position: 0.01, rotation: 1 } },
 	]
 
 	const world = join(SERVER_DIR, WORLD_NAME)
@@ -487,6 +487,11 @@ async function main(): Promise<void> {
 		check.expect((await check.entity(root, 'Pos'))?.replace(/d/g, '') === '[10.5, -60.0, 3.25]', 'tp did not move the root')
 		check.expect((await check.entity(bone(2), 'Pos'))?.replace(/d/g, '') === '[10.5, -60.0, 3.25]', 'the bones did not follow the root')
 		check.expect((await check.entity(bone(2), 'Rotation'))?.replace(/f/g, '') === '[90.0, 30.0]', 'tp did not turn the bones')
+
+		const durations = async () => Promise.all([root, bone(0), bone(2)].map((e) => check.entity(e, 'teleport_duration')))
+		check.expect((await durations()).join() === '1,1,1', `spawn wrote teleport_duration ${(await durations()).join()}, not 1`)
+		check.expect((await check.result('function rigel:synthetic/teleport_duration {duration:5}')) !== 0, 'teleport_duration failed')
+		check.expect((await durations()).join() === '5,5,5', `teleport_duration {duration:5} left ${(await durations()).join()}`)
 
 		// Locator entities ride nothing: tp places them again, turned with the rig. at_locator runs at the locator.
 		const movedTo = [10.5, -60, 3.25]

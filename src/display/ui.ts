@@ -74,7 +74,7 @@ function openDisplayDialog(target: { edit: Group } | { parent: Group | undefined
 			seeThrough: { label: '透けて見える', type: 'checkbox', value: value('text', 'seeThrough', false), condition: is('text') },
 			alignment: { label: '揃え', type: 'select', options: Object.fromEntries(TEXT_ALIGNMENTS.map((a) => [a, a])), value: value('text', 'alignment', 'center'), condition: is('text') },
 			scale: { label: '拡大', type: 'vector', dimensions: 3, value: [...current.scale], step: 0.1 },
-			nbt: { label: '追加の NBT', type: 'text', value: current.nbt, placeholder: '{brightness:{block:15,sky:15}}', description: 'summon に足すキーです。id・UUID・Tags・Passengers・transformation・interpolation_duration は書かないでください。' },
+			nbt: { label: '追加の NBT', type: 'text', value: current.nbt, placeholder: '{brightness:{block:15,sky:15}}', description: 'summon に足すキーです。id・UUID・Tags・Passengers・transformation・interpolation_duration・teleport_duration は書かないでください。' },
 		},
 		onConfirm(form: FormResult) {
 			const kind = form.kind as DisplayKind

@@ -4,6 +4,7 @@ import { WARM_PRIORITIES, type AnimationThin, type Tolerance, type WarmPriority 
 export const DEFAULT_CHUNK_LINES = 500
 export const DEFAULT_PRIORITY: WarmPriority = 'high'
 export const DEFAULT_SPAN = 20
+export const DEFAULT_TELEPORT_DURATION = 1
 export const DEFAULT_TOLERANCE: Tolerance = { position: 0, rotation: 0 }
 
 export interface ProjectSettings {
@@ -17,6 +18,7 @@ export interface ProjectSettings {
 	// The tolerance the dialog shows, kept while thinning is off.
 	tolerance: Tolerance
 	span: number
+	teleportDuration: number
 }
 
 const KEYS = {
@@ -27,6 +29,7 @@ const KEYS = {
 	resourcePack: 'rigel_resource_pack',
 	chunkLines: 'rigel_chunk_lines',
 	span: 'rigel_thin_span',
+	teleportDuration: 'rigel_teleport_duration',
 } as const
 const THIN_KEY = 'rigel_thin'
 const POSITION_KEY = 'rigel_thin_position'
@@ -54,6 +57,7 @@ export function registerExportSettings(): void {
 		new Property(ModelProject, 'number', POSITION_KEY, { condition, exposed, default: DEFAULT_TOLERANCE.position }),
 		new Property(ModelProject, 'number', ROTATION_KEY, { condition, exposed, default: DEFAULT_TOLERANCE.rotation }),
 		new Property(ModelProject, 'number', KEYS.span, { condition, exposed, default: DEFAULT_SPAN }),
+		new Property(ModelProject, 'number', KEYS.teleportDuration, { condition, exposed, default: DEFAULT_TELEPORT_DURATION }),
 		new Property(Animation, 'enum', PRIORITY_KEY, { condition, exposed, default: DEFAULT_PRIORITY, values: [...WARM_PRIORITIES] }),
 		new Property(Animation, 'enum', THIN_KEY, { condition, exposed, default: 'project', values: [...ANIMATION_THIN] }),
 		new Property(Animation, 'number', POSITION_KEY, { condition, exposed, default: DEFAULT_TOLERANCE.position }),
@@ -83,6 +87,7 @@ export function readProjectSettings(project: ModelProject): ProjectSettings {
 		thin: bag[THIN_KEY] === true ? tolerance : undefined,
 		tolerance,
 		span: number(bag, KEYS.span, DEFAULT_SPAN),
+		teleportDuration: number(bag, KEYS.teleportDuration, DEFAULT_TELEPORT_DURATION),
 	}
 }
 

@@ -166,6 +166,7 @@ describe('data pack', () => {
 		rig: 'axia',
 		id: 0x1a2b3c4d,
 		chunkLines: 3,
+		teleportDuration: 1,
 		passengers: [bone(4, 'r0'), bone(5, 'r1')],
 		locators: [],
 		variants: [],
@@ -226,6 +227,21 @@ describe('data pack', () => {
 		expect(spawn[1]).toContain('UUID:[I;439041101,0,0,0]')
 		expect(spawn[1]).toContain('{id:"minecraft:item_display",item:{id:"minecraft:white_dye",Count:1b,tag:{CustomModelData:5}},UUID:[I;439041101,0,0,2],Tags:["rigel","rigel.axia"],interpolation_duration:1,transformation:[r1,0f,0f,0f,1f]}')
 		expect(lines(files, fn('tp'))).toEqual(['tp 1a2b3c4d-0-0-0-0 ~ ~ ~ ~ ~', 'execute as 1a2b3c4d-0-0-0-0 on passengers run tp @s ~ ~ ~ ~ ~'])
+	})
+
+	test('spawn writes teleport_duration only after the first tp, so the bones face the caller at once', () => {
+		const spawn = lines(files, fn('spawn'))
+		expect(spawn[1]).not.toContain('teleport_duration')
+		expect(spawn.slice(-3, -1)).toEqual(['function rigel:axia/tp', 'function rigel:axia/teleport_duration {duration:1}'])
+	})
+
+	test('teleport_duration changes the root and every bone', () => {
+		expect(lines(files, fn('teleport_duration'))).toEqual([
+			'execute unless entity 1a2b3c4d-0-0-0-0 run return fail',
+			'$data modify entity 1a2b3c4d-0-0-0-0 teleport_duration set value $(duration)',
+			'$execute as 1a2b3c4d-0-0-0-0 on passengers run data modify entity @s teleport_duration set value $(duration)',
+		])
+		expect(lines(rigPack(input({ teleportDuration: 0 })), fn('spawn'))).toContain('function rigel:axia/teleport_duration {duration:0}')
 	})
 
 	test('both packs write the marker before anything else', () => {
@@ -356,13 +372,15 @@ describe('resource pack', () => {
 })
 
 describe('settings', () => {
-	const settings = (s: Partial<RigSettings>): RigSettings => ({ rig: 'axia', id: 1, item: 'minecraft:white_dye', chunkLines: 500, span: 20, ...s })
+	const settings = (s: Partial<RigSettings>): RigSettings => ({ rig: 'axia', id: 1, item: 'minecraft:white_dye', chunkLines: 500, span: 20, teleportDuration: 1, ...s })
 	test('reserved and malformed values are reported', () => {
 		expect(settingsProblems(settings({}))).toEqual([])
 		for (const rig of ['core', 'const', 'warm', 'rigel', 'Axia', 'a-b', '']) expect(settingsProblems(settings({ rig })).length).toBe(1)
 		expect(settingsProblems(settings({ item: 'white dye' })).length).toBe(1)
 		expect(settingsProblems(settings({ chunkLines: 0 })).length).toBe(1)
 		expect(settingsProblems(settings({ span: 0 })).length).toBe(1)
+		for (const teleportDuration of [0, 59]) expect(settingsProblems(settings({ teleportDuration }))).toEqual([])
+		for (const teleportDuration of [-1, 60, 1.5]) expect(settingsProblems(settings({ teleportDuration })).length).toBe(1)
 		expect(settingsProblems(settings({ thin: { position: 0.01, rotation: 0.5 } }))).toEqual([])
 		expect(settingsProblems(settings({ thin: { position: -1, rotation: 0.5 } })).length).toBe(1)
 		expect(settingsProblems(settings({ thin: { position: 0.01, rotation: Number.NaN } })).length).toBe(1)
@@ -395,7 +413,7 @@ function source(): RigSource {
 }
 
 describe('export', () => {
-	const settings: RigSettings = { rig: 'axia', id: 0x1a2b3c4d, item: 'minecraft:white_dye', chunkLines: 500, span: 20 }
+	const settings: RigSettings = { rig: 'axia', id: 0x1a2b3c4d, item: 'minecraft:white_dye', chunkLines: 500, span: 20, teleportDuration: 1 }
 
 	test('matrices become the values written each frame', () => {
 		const result = buildExport(source(), settings, undefined)

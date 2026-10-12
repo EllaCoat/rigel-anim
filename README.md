@@ -82,7 +82,7 @@ outliner の「display を追加」で、ブロック表示（block_display）�
 - ブロック：`minecraft:oak_stairs[facing=east]` の形で指定する。ブロックは Group の pivot を角にして、+x・+y・+z の向きへ伸びる。
 - アイテム：item の ID、tag、表示の型（`none`・`thirdperson_righthand` など）を指定する。アイテムの中心が Group の pivot に来る。
 - テキスト：文字か JSON のテキストと、行の幅・背景色・文字の不透明度・影・透けて見えるか・揃えを指定する。テキストは下辺の中央が Group の pivot に来て、+z 側から読める向きに置かれる。JSON のテキストに Minecraft が読めない値（色の名前の誤りなど）があると、Minecraft は文字を表示しない。そのため、設定の確定と書き出しのときに知らせる。
-- 拡大と追加の NBT（`brightness` など）も指定できる。追加の NBT に `id`・`UUID`・`Tags`・`Passengers`・`transformation`・`interpolation_duration` は書けない。
+- 拡大と追加の NBT（`brightness` など）も指定できる。追加の NBT に `id`・`UUID`・`Tags`・`Passengers`・`transformation`・`interpolation_duration`・`teleport_duration` は書けない。
 - display の Group には Cube を入れない。
 - display の entity には `rigel.<リグ名>.<名前>` のタグが付く。ほかのデータパックから、手に持たせる item を差し替えるときなどに使う。
 - billboard は fixed だけで、ほかは使えない。fixed 以外では、Bone に付けた display の位置がカメラに合わせて回ってしまう。
@@ -121,6 +121,7 @@ File メニューの「Export」から「Rigel のパックを書き出す」を
 | 間引く | 補間で再現できる tick への書き込みを、Bone ごとに省く。既定は切 |
 | ずれの上限 | 間引くときに許す、本来の姿勢とのずれ。位置（ブロック）と向き（度）で決め、拡大のずれ（割合）には向きの値をラジアンにして使う。初期値はどちらも 0 |
 | 1 回の書き込みで補間する上限 | 1 回の書き込みで補間に任せる tick 数の上限。既定は 20 |
+| tp の補間 | リグを tp したときに、client が位置と向きを補間する tick 数（`teleport_duration`）。0〜59 で、既定は 1。0 だと向きはすぐ変わり、位置は 1 tick で移る。1 以上だと位置と向きをその tick 数で補間する。召喚時の tp の後で root と全 Bone に書くので、召喚時の tp には効かない |
 | 温めの優先度 | アニメごとに `xhigh`・`high`・`low`。既定は `high` |
 | 間引き（アニメごと） | プロジェクトと同じ・間引かない・このアニメの値（位置と向き） |
 
@@ -145,6 +146,7 @@ File メニューの「Export」から「Rigel のパックを書き出す」を
 | `rigel:<リグ名>/pause` | 今の姿勢のまま止める。再生中でなければ失敗で返す |
 | `rigel:<リグ名>/restart` | pause で止めたところから再生を続ける。pause 中でなければ失敗で返す |
 | `rigel:<リグ名>/tp` | リグを実行位置へ動かし、実行者の向きにそろえる。locator の entity も置き直す |
+| `rigel:<リグ名>/teleport_duration {duration:<tick>}` | root と全 Bone の `teleport_duration` を変える。新しい値は次の tick 以降の tp から効き、同じ tick の tp は前の値で補間される |
 | `rigel:<リグ名>/kill` | リグを消す。locator の entity も消す |
 | `rigel:<リグ名>/variant/<variant 名>` | variant を適用する。適用する Bone のモデルを差し替え、適用時の関数があれば呼ぶ。variant の keyframe がある tick にも呼ばれる |
 | `rigel:<リグ名>/variant/default` | variant で差し替えたモデルを元に戻す。keyframe に `default` を置いた tick にも呼ばれる |

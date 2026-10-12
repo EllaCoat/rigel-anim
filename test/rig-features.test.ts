@@ -5,7 +5,7 @@ import { blockStateNbt, displayNbt, snbtProblem, textJson, topLevelKeys } from '
 import { DEFAULT_TOLERANCE } from '../src/export/settings'
 import type { AnimationSource, BoneSource, DisplaySettings, Files, RigSettings, RigSource, TextureSource } from '../src/export/types'
 
-const settings: RigSettings = { rig: 'axia', id: 0x1a2b3c4d, item: 'minecraft:white_dye', chunkLines: 500, span: 20 }
+const settings: RigSettings = { rig: 'axia', id: 0x1a2b3c4d, item: 'minecraft:white_dye', chunkLines: 500, span: 20, teleportDuration: 1 }
 const identity = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
 const fn = (path: string) => `data/rigel/functions/axia/${path}.mcfunction`
 const lines = (files: Files, path: string) => {

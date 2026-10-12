@@ -30,6 +30,7 @@ export function settingsProblems(s: RigSettings): string[] {
 	if (!Number.isInteger(s.id) || s.id < 1 || s.id > 0xffffffff) problems.push('固有 ID が正しくありません（1〜4294967295 の整数ではありません）。')
 	if (s.thin && !validTolerance(s.thin)) problems.push('間引きの許容誤差は、位置・向きとも 0 以上の数にしてください。')
 	if (!Number.isInteger(s.span) || s.span < 1) problems.push('間引きの区間の上限は、1 以上の整数にしてください。')
+	if (!Number.isInteger(s.teleportDuration) || s.teleportDuration < 0 || s.teleportDuration > 59) problems.push('tp の補間は、0〜59 の整数にしてください。')
 	return problems
 }
 
@@ -192,6 +193,7 @@ export function buildExport(source: RigSource, settings: RigSettings, existingIt
 			rig: settings.rig,
 			id: settings.id,
 			chunkLines: settings.chunkLines,
+			teleportDuration: settings.teleportDuration,
 			passengers,
 			locators: source.locators.map((l, i) => ({
 				name: locatorNames[i]!,

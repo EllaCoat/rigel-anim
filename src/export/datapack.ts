@@ -62,6 +62,7 @@ export interface RigPackInput {
 	rig: string
 	id: number
 	chunkLines: number
+	teleportDuration: number
 	passengers: PassengerInput[]
 	locators: LocatorInput[]
 	variants: VariantInput[]
@@ -233,6 +234,7 @@ export function rigPack(p: RigPackInput): Files {
 			]
 		}),
 		`function ${id('tp')}`,
+		`function ${id('teleport_duration')} {duration:${p.teleportDuration}}`,
 		`scoreboard players set ${self} Rigel.Playing 0`,
 	])
 	// Passengers move with the root; their facing is their own. Locator entities ride nothing, so they are placed again.
@@ -240,6 +242,11 @@ export function rigPack(p: RigPackInput): Files {
 		`tp ${root} ~ ~ ~ ~ ~`,
 		`execute as ${root} on passengers run tp @s ~ ~ ~ ~ ~`,
 		...entityLocators.map((l) => `function ${id(`locator/${l.name}/place`)} with storage ${storage} Locators.${l.name}`),
+	])
+	write('teleport_duration', [
+		`execute unless entity ${root} run return fail`,
+		`$data modify entity ${root} teleport_duration set value $(duration)`,
+		`$execute as ${root} on passengers run data modify entity @s teleport_duration set value $(duration)`,
 	])
 	for (const l of entityLocators) write(`locator/${l.name}/place`, [`$execute at ${root} run tp ${locatorEntity(l.i)} ^$(x) ^$(y) ^$(z) ~ ~`])
 	write('kill', [

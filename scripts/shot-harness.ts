@@ -1,9 +1,13 @@
 // Runs inside the development Blockbench: mc-shot.ts bundles this file and injects it as __rigelShot.
+import { tickCount } from '../src/bake/sample'
+import { variantKeys } from '../src/export/collect'
+import { variantCalls } from '../src/export/variant-keys'
 import { readVariants } from '../src/variant/settings'
-import { previewVariant } from '../src/variant/ui'
 import { blockbenchCamera, FOV, type Pose, type View } from './shot-spec'
+import { callVariant, ORIGINAL, viewCalls, type Worn } from './shot-variants'
 
 const TICKS_PER_SECOND = 20
+let worn: Worn = new Map()
 type Stackable = { stackAnimations(animations: BBAnimation[], inLoop: boolean): void }
 
 async function open(model: any, name: string) {
@@ -14,6 +18,12 @@ async function open(model: any, name: string) {
 		await project.close(true)
 	}
 	Codecs.project.load(model, { name, path: name, no_file: true } as any)
+	worn = new Map()
+	// The viewport follows the selected animation's variant keyframes; this harness sets the variant itself.
+	for (const animation of Project!.animations) {
+		const effects = animation.animators.effects as unknown as { muted: Record<string, boolean> } | undefined
+		if (effects) effects.muted.variant = true
+	}
 	unselectAllElements()
 	// The export includes cubes hidden in the viewport, so the comparison draws them too.
 	for (const node of [...Outliner.elements, ...Group.all]) (node as { visibility: boolean }).visibility = true
@@ -47,16 +57,37 @@ function applyPose(pose: Pose | undefined): void {
 	;(Animator as unknown as Stackable).stackAnimations([animation], false)
 }
 
-function applyVariant(name: string | undefined): void {
-	const variant = name === undefined ? undefined : readVariants(Project!).find((v) => v.name === name)
-	if (name !== undefined && !variant) throw new Error(`no variant "${name}"`)
-	previewVariant(variant)
+function applyVariants(view: View): void {
+	const variants = readVariants(Project!)
+	const excluded = new Map(variants.map((v) => [v.name, new Set(v.excluded)]))
+	const bones = Group.all.filter((g) => g.children.some((c) => c instanceof Cube)).map((g) => g.uuid)
+	const animation = view.pose && Project!.animations.find((a) => a.name === view.pose!.animation)
+	const ticks = animation ? tickCount(animation) : 0
+	const frameCalls = animation ? variantCalls(animation.loop, ticks, variantKeys(animation).flatMap((k) => (k.variant === null ? [] : [{ time: k.time, variant: k.variant }]))) : new Map<number, string>()
+	for (const name of viewCalls(view, frameCalls, ticks)) {
+		if (name !== ORIGINAL && !excluded.has(name)) throw new Error(`no variant "${name}"`)
+		worn = callVariant(worn, name, excluded, bones)
+	}
+	Canvas.updateView({ elements: Cube.all, element_aspects: { faces: true } })
+	for (const cube of Cube.all) {
+		const variant = variants.find((v) => v.name === (cube.parent instanceof Group ? worn.get(cube.parent.uuid) : undefined))
+		if (!variant) continue
+		const replace = new Map<THREE.Material, THREE.Material>()
+		for (const [from, to] of variant.textures) {
+			const a = Texture.all.find((t) => t.uuid === from)
+			const b = Texture.all.find((t) => t.uuid === to)
+			if (a && b) replace.set(a.getMaterial() as THREE.Material, b.getMaterial() as THREE.Material)
+		}
+		const mesh = cube.mesh as THREE.Mesh
+		const swap = (m: THREE.Material) => replace.get(m) ?? m
+		mesh.material = Array.isArray(mesh.material) ? mesh.material.map(swap) : swap(mesh.material)
+	}
 }
 
 // Draws only the model (no grid, gizmos or background) into a transparent image of the given size.
 function render(view: View, width: number, height: number): string {
 	applyPose(view.pose)
-	applyVariant(view.variant)
+	applyVariants(view)
 	const renderer = Preview.selected!.renderer
 	const camera = new THREE.PerspectiveCamera(FOV, width / height, 0.5, 30000)
 	const { position, target } = blockbenchCamera(view)

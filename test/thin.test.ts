@@ -112,6 +112,14 @@ describe('runEnds', () => {
 		expect(snaps).toEqual([])
 	})
 
+	test('a cut ends a run there, whatever the poses allow, and the runs after it start from it', () => {
+		const moving = track(41, (f) => values([f * 0.05, 0, 0], axisAngle([0, 0, 1], 0)))
+		expect(runEnds(moving, tolerance, 20, [9]).ends).toEqual([0, 1, 2, 3, 9, 29, 40])
+		expect(runEnds(moving, tolerance, 100, [9, 20]).ends).toEqual([0, 1, 2, 3, 9, 20, 40])
+		expect(runEnds(moving, tolerance, 20, [39]).ends).toEqual([0, 1, 2, 3, 23, 39, 40])
+		expect(runEnds(moving, tolerance, 20, [1, 2, 3])).toEqual(runEnds(moving, tolerance, 20))
+	})
+
 	test('a slightly sheared bone turning at a steady speed is still one run', () => {
 		const turning = track(21, (f) => values([0, 0, 0], axisAngle([0, 0, 1], f * 3), [1.02, 0.99, 1], 0.01))
 		expect(runEnds(turning, tolerance, 20).ends).toEqual([0, 1, 2, 3, 20])
@@ -126,6 +134,13 @@ describe('animationRunEnds', () => {
 		expect(animationRunEnds('hold', poses, tolerance, 20)(0).ends).toEqual([0, 1, 2, 3, 7])
 		// Looping back from 0.6 to 0 breaks the straight line at frame 6.
 		expect(animationRunEnds('loop', poses, tolerance, 20)(0).ends).toEqual([0, 1, 2, 3, 6, 7])
+	})
+
+	test('cuts are asked for per bone', () => {
+		const poses = Array.from({ length: 31 }, (_, f) => [pose(f * 0.1), pose(f * 0.1)])
+		const runs = animationRunEnds('hold', poses, tolerance, 40, (bone) => (bone === 0 ? [12] : []))
+		expect(runs(0).ends).toEqual([0, 1, 2, 3, 12, 30])
+		expect(runs(1).ends).toEqual([0, 1, 2, 3, 30])
 	})
 
 	test('a bone hidden by looping back to frame 0 is hidden at once, and so are the first runs after it', () => {

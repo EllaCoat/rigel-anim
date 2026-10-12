@@ -95,12 +95,21 @@ export interface Tolerance {
 
 export type AnimationThin = 'project' | 'off' | Tolerance
 
+// A variant keyframe of an animation.
+export interface VariantKey {
+	// Seconds into the animation.
+	time: number
+	// A variant's name, 'default' for the original model, or null when the keyframe names a variant that no longer exists.
+	variant: string | null
+}
+
 export interface AnimationSource {
 	name: string
 	loop: Loop
 	ticks: number
 	priority: WarmPriority
 	thin: AnimationThin
+	variantKeys: VariantKey[]
 	// (ticks + 1) frames × bones × 16, as readBoneMatrices writes them.
 	matrices: Float64Array
 	// (ticks + 1) frames × locators × 3: positions in blocks, in the rig's frame.

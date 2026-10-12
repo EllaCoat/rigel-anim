@@ -34,14 +34,42 @@ Blockbench で作ったモデルとアニメーションを、Minecraft Java Edi
 
 ### variant
 
-Tools メニューの「variant を編集」で、テクスチャ違いなどの variant を作る。variant ごとに次を決める。
+「Variants」パネルで、テクスチャ違いなどの variant を作る。パネルは、モデリングとアニメーションの画面のサイドバーに出る。ペイントの画面にはパネルを出さず、ビューポートは元のモデルの見た目になる。塗る先が、variant の差し替え先ではなく元のテクスチャだからだ。ほかのパネルと同じように、左右のサイドバーや浮かせた位置へ動かせる。
+
+パネルの一覧の先頭の `default` は、元のモデル。編集も削除もできない。一覧で variant を選ぶと、ビューポートがその variant の見た目になる。この選択は保存されない。一覧の上のボタンで、variant の追加・複製・削除ができる。variant の変更は Undo・Redo できる。
+
+一覧で選んだ variant ごとに、次を決める。
 
 - 名前：関数の名前になる。小文字・数字・`_` だけ。`default` は使えない。
 - テクスチャの差し替え：元のテクスチャと差し替えるテクスチャの組。差し替えるテクスチャはプロジェクトに読み込んでおき、UV の大きさを元と同じにする。
 - 適用する Bone：外した Bone は、この variant を適用しても今のモデルのまま残る。顔の Bone だけに適用する variant を作れば、それを当てても、体に当てた別の variant は戻らない。
 - 適用時の関数：適用した後に呼ぶ関数（任意）。
 
-ダイアログで variant を選ぶと、ビューポートがその variant の見た目になる。ダイアログを閉じると元に戻る。
+適用する Bone は、アウトライナーと同じ階層のツリーで選ぶ。Cube を持つ Group が Bone で、display の Group は出ない。親のチェックを切り替えると、子孫もまとめて切り替わる。子の状態がそろっていないときは、親が中間の表示になる。ツリーの上のボタンは次のとおり。
+
+- 全部：すべての Bone に適用する。
+- 無し：どの Bone にも適用しない。
+- 選択中だけ：アウトライナーで選んでいる Group と、その子孫の Bone だけに適用する。頭の Group を選んで押せば、顔の variant の対象を 1 回で決められる。
+
+#### variant の keyframe
+
+アニメーションの画面では、Timeline の Effects にある「Variant」トラックで variant を切り替えられる。keyframe は variant を 1 つ持ち、`default` も選べる。
+
+- 「Variants」パネルの「再生位置に置く」は、パネルで選んでいる variant の keyframe を、再生位置に一番近い tick に置き、再生位置もその tick へ移す。その tick に keyframe があれば、その variant を替える。トラックの「+」でも置ける。
+- keyframe の variant を替えるときは、keyframe をタイムラインか、パネルの keyframe の一覧で選び、パネルの一覧で variant を選ぶ。
+- keyframe があるアニメーションでは、再生とスクラブで、Bone ごとに表示する variant を決める。各 Bone には、再生位置以前でその Bone に適用する最後の keyframe の variant を表示する。`default` はすべての Bone に適用する。顔だけに適用する variant の keyframe が、体に適用する variant の keyframe より後ろにあっても、体は体の variant のままで、書き出しの結果と同じになる。再生位置以前にその Bone に適用する keyframe がないときは、アニメーション全体で最後のものを使う。ループで前の周の variant が残るのと同じ考え方だ。どの keyframe もその Bone に適用しないときは、パネルで選んだ variant を表示する。その variant が Bone を外していれば、元の見た目になる。
+- プレビューは、keyframe を書き出しと同じ規則で絞ってから、この決め方を当てる。時刻は tick に丸め、同じ tick に複数あれば後ろの 1 つだけを使い、ループの最後の tick にある keyframe も書き出しと同じに扱う（下の「書き出すと」以降）。
+- パネルの一覧では、いま Bone が表示している variant のすべてに、表示中の目のマークが付く。元の見た目のままの Bone があるときは、`default` にも付く。
+- keyframe が 1 つもないアニメーションと、アニメーション以外の画面では、パネルで選んだ variant を、外していない Bone に表示する。
+- トラックの目のアイコンで切るミュートは、プレビューだけに効く。書き出しには、ミュートした keyframe も含まれる。
+- keyframe は、variant を改名しても外れない。variant を削除しても、その variant を指す keyframe は残る。存在しない variant を指す keyframe があると、書き出しはそれを知らせて止まる。
+
+書き出すと、keyframe の時刻を tick（1 秒 20 tick、四捨五入）にして、その tick のフレームの関数が `rigel:<リグ名>/variant/<variant 名>` を呼ぶ。温めのあいだは呼ばない。
+
+- 同じ tick に keyframe が複数あるときは、時刻が後の 1 つだけを呼ぶ。
+- ループのアニメーションの最後の tick は、frame 0 の姿勢を見せる tick になる。その tick にある keyframe は tick 0 の keyframe として扱い、tick 0 の variant は最後の tick でも適用する。tick 0 にも keyframe があるときは、tick 0 のほうを使い、最後の tick の keyframe は使わない。
+- 最初の keyframe より前は何も呼ばないので、再生を始めたときの variant は、それまでに適用していたものになる。再生のたびに同じ variant から始めたいときは、tick 0 に keyframe を置く。
+- variant が 1 つもなくても、`default` の keyframe は置ける。このときも `variant/default` を書き出す。
 
 ### locator
 
@@ -118,8 +146,8 @@ File メニューの「Export」から「Rigel のパックを書き出す」を
 | `rigel:<リグ名>/restart` | pause で止めたところから再生を続ける。pause 中でなければ失敗で返す |
 | `rigel:<リグ名>/tp` | リグを実行位置へ動かし、実行者の向きにそろえる。locator の entity も置き直す |
 | `rigel:<リグ名>/kill` | リグを消す。locator の entity も消す |
-| `rigel:<リグ名>/variant/<variant 名>` | variant を適用する。適用する Bone のモデルを差し替え、適用時の関数があれば呼ぶ |
-| `rigel:<リグ名>/variant/default` | variant で差し替えたモデルを元に戻す |
+| `rigel:<リグ名>/variant/<variant 名>` | variant を適用する。適用する Bone のモデルを差し替え、適用時の関数があれば呼ぶ。variant の keyframe がある tick にも呼ばれる |
+| `rigel:<リグ名>/variant/default` | variant で差し替えたモデルを元に戻す。keyframe に `default` を置いた tick にも呼ばれる |
 | `rigel:<リグ名>/at_locator/<locator 名> {function:"<名前空間>:<パス>"}` | locator の今の位置で、リグの向きのまま関数を実行する。`@s` は呼び出し元のまま |
 
 locator の今の位置は、storage `rigel:<リグ名> Locators.<locator 名>` に `{x, y, z}` で入っている。値はリグの向きを基準にした左・上・前の距離なので、マクロで `^$(x) ^$(y) ^$(z)` として使える。locator の entity には `rigel.<リグ名>.<locator 名>` のタグが付く。関数名とタグに使う display と locator の名前は、次の順に変換したものになる。
@@ -145,6 +173,7 @@ locator の今の位置は、storage `rigel:<リグ名> Locators.<locator 名>` 
 - 間引いたリグでは、stop と pause の後も、各 Bone は client に見えている姿勢で止まる。restart すると、区間の残りの tick で区間の終わりへ続く。pause を呼んだ tick に新しい区間を始めた Bone は、1 tick 前の姿勢で止まることがある。ループの 2 周目以降では、pause の直前に書いた Bone が、restart の後に 1 tick 分の動きを数 tick かけて追うことがある。
 - 間引いたリグを stop・pause した後で、間引きを切って書き出し直したら、リグを召喚し直す。召喚し直さないと、止めたときの長い `interpolation_duration` が Bone に残り、リグが動かなくなる。
 - 間引いたリグでは、play を呼んだ tick と once のアニメが初期姿勢へ戻る tick に、Bone は補間せずにその姿勢へ移る。同じ姿勢を書いて補間をやり直すと、client が前の区間の補間をもう一度見せるからだ。
+- variant の keyframe がある tick では、その variant が書き込む Bone の区間を直前で区切り、その tick から次の区間を書き込む。client は、アイテムが替わると補間を表示中の姿勢からやり直すが、区間の進み具合は引き継ぐ。区間の途中でアイテムが替わると、Bone の動きが一瞬ずれるからだ。すでに止まっている Bone は書き込まない。区間を区切るぶん、その Bone の書き込みは増える。
 - 間引いたリグは、stop と pause のときに Bone の `shadow_strength` を書き換え、区間の終わりのフレーム番号を `PortalCooldown` に入れる。`shadow_strength` は `shadow_radius` が 0（既定）なら見た目に出ず、`PortalCooldown` は display entity の動きに関わらない。
 
 #### 書き出しの制限

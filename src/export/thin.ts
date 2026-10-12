@@ -155,7 +155,8 @@ function change(a: ArrayLike<number>, b: ArrayLike<number>): { rotation: number;
 // ponytail: writes of 4+ ticks at once (a frame stuck ~150 ms) can show a hidden bone shrinking over a run; raise if seen.
 const MERGED = 3
 
-export function runEnds(poses: ArrayLike<number>[], tolerance: Tolerance, span: number): Runs {
+// cuts: frames a run must end at, whatever the poses allow.
+export function runEnds(poses: ArrayLike<number>[], tolerance: Tolerance, span: number, cuts: readonly number[] = []): Runs {
 	const radians = tolerance.rotation * DEGREE
 	const splits = poses.map(split)
 	const steps = poses.slice(1).map((pose, m) => change(poses[m]!, pose))
@@ -174,7 +175,7 @@ export function runEnds(poses: ArrayLike<number>[], tolerance: Tolerance, span: 
 		const justHidden = hidden[k]! && hidden.slice(Math.max(0, k - MERGED), k).includes(false)
 		let j = k + 1
 		let fastest = steps[k]!
-		while (k >= MERGED && !justHidden && j < last && j + 1 - k <= span) {
+		while (k >= MERGED && !justHidden && j < last && j + 1 - k <= span && !cuts.includes(j)) {
 			fastest = { rotation: Math.max(fastest.rotation, steps[j]!.rotation), position: Math.max(fastest.position, steps[j]!.position) }
 			if (!holds(k, k, j + 1, tolerance.position, radians)) break
 			const lost = (from: number) => holds(from, k, j + 1, tolerance.position + (k - from) * fastest.position, radians + (k - from) * fastest.rotation)
@@ -188,8 +189,8 @@ export function runEnds(poses: ArrayLike<number>[], tolerance: Tolerance, span: 
 	return { ends, snaps }
 }
 
-export function animationRunEnds(loop: Loop, poses: Poses, tolerance: Tolerance, span: number): (bone: number) => Runs {
+export function animationRunEnds(loop: Loop, poses: Poses, tolerance: Tolerance, span: number, cuts?: (bone: number) => readonly number[]): (bone: number) => Runs {
 	const last = poses.length - 1
 	const values = poses.map((frame) => frame.map((pose) => pose.split(',').map((v) => Number.parseFloat(v))))
-	return (bone) => runEnds(poses.map((_, f) => values[f === last && loop === 'loop' ? 0 : f]![bone]!), tolerance, span)
+	return (bone) => runEnds(poses.map((_, f) => values[f === last && loop === 'loop' ? 0 : f]![bone]!), tolerance, span, cuts?.(bone))
 }

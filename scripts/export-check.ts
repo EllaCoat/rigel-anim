@@ -1,6 +1,7 @@
 // Exports the synthetic rig (synthetic-rig.ts) from the development Blockbench and checks the data packs on
 // a 1.20.4 server: they load without errors, the calls behave as designed, every tick of every animation
-// leaves each bone at the pose Blockbench sampled, and two rigs warm one chunk per tick, by priority. A third,
+// leaves each bone at the pose Blockbench sampled and holds the variant its keyframes have applied by then,
+// and two rigs warm one chunk per tick, by priority. A third,
 // thinned rig (all animations but `eased`) is checked against its planned writes: each bone holds the end of its
 // current run with the run's length, and pause, stop and restart set the values that hold and resume the client's
 // interpolation.
@@ -21,7 +22,8 @@ import { displayPoseString, planFrames, poseString, type FrameWrite } from '../s
 import { toleranceOf, uniqueName } from '../src/export/build'
 import { boneScale } from '../src/export/item-model'
 import { animationRunEnds } from '../src/export/thin'
-import type { RigSettings, RigSource } from '../src/export/types'
+import { variantCalls, variantCuts } from '../src/export/variant-keys'
+import type { AnimationSource, RigSettings, RigSource } from '../src/export/types'
 import { exportRig, type ExportFs } from '../src/export/write'
 import { blockbenchRunning, devBlockbench, evaluate, useFonts } from './devtools'
 import { syntheticFontPack, syntheticRig } from './synthetic-rig'
@@ -87,16 +89,64 @@ function expectations(source: RigSource) {
 	}
 }
 
-// The planned writes of each animation of a thinned rig, with the values each pose writes.
-function thinnedPlans(source: RigSource, settings: RigSettings) {
+// The variant each frame function of an animation applies, from its keyframes.
+function variantPlan(source: RigSource, a: number): Map<number, string> {
+	const animation = source.animations[a]!
+	return variantCalls(animation.loop, animation.ticks, animation.variantKeys.flatMap((k) => (k.variant === null ? [] : [{ time: k.time, variant: k.variant }])))
+}
+
+// The entities and the CustomModelData a variant function of a rig writes.
+function variantWrites(world: string, rig: string, name: string): { uuid: string; cmd: number }[] {
+	return readFileSync(join(world, 'datapacks', rig, 'data/rigel/functions', rig, 'variant', `${name}.mcfunction`), 'utf8')
+		.split('\n')
+		.flatMap((l) => {
+			const m = /^data merge entity (\S+) \{item:\{tag:\{CustomModelData:(\d+)\}\}\}$/.exec(l)
+			return m ? [{ uuid: m[1]!, cmd: Number(m[2]) }] : []
+		})
+}
+
+// The frame function the server runs on step s after play, if any: play writes f/0, the first step keeps it, then
+// one frame per step, a loop going round from f/n to f/1, a 'once' animation ending with one more.
+function frameAt(loop: AnimationSource['loop'], n: number, s: number): number | undefined {
+	if (s === 0) return 0
+	const t = s - 1
+	if (t < 1) return undefined
+	if (loop === 'loop') return n === 0 ? undefined : ((t - 1) % n) + 1
+	return t <= n + (loop === 'once' ? 1 : 0) ? t : undefined
+}
+
+// The planned writes of each animation of a thinned rig, with the values each pose writes. rewritten: the bones
+// (by index among the rig's entities) a variant function writes.
+function thinnedPlans(source: RigSource, settings: RigSettings, rewritten: (variant: string) => ReadonlySet<number>) {
 	const renderable = renderables(source)
-	return source.animations.map((a) => {
+	return source.animations.map((a, i) => {
 		const poses = Array.from({ length: a.ticks + 1 }, (_, f) => renderable.map(({ index, pose }) => pose(a.matrices, (f * source.bones.length + index) * 16)))
 		const tolerance = toleranceOf(a, settings)
-		const frames: FrameWrite[][] = planFrames(a.loop, poses, tolerance && animationRunEnds(a.loop, poses, tolerance, settings.span))
+		const calls = variantPlan(source, i)
+		const ends = tolerance && animationRunEnds(a.loop, poses, tolerance, settings.span, variantCuts(calls, rewritten))
+		const frames: FrameWrite[][] = planFrames(a.loop, poses, ends)
 		const runs = frames.some((writes) => writes.some((w) => w.duration > 1))
-		return { loop: a.loop, ticks: a.ticks, frames, runs, values: poses.map((frame) => frame.map((p) => p.split(',').map((v) => Number.parseFloat(v)))) }
+		return { loop: a.loop, ticks: a.ticks, frames, runs, calls, ends, values: poses.map((frame) => frame.map((p) => p.split(',').map((v) => Number.parseFloat(v)))) }
 	})
+}
+
+// The CustomModelData each model bone should hold after the variants applied so far.
+class VariantState {
+	private cmds: Record<string, number>
+	constructor(
+		base: Record<string, number>,
+		private readonly writes: (variant: string) => { uuid: string; cmd: number }[],
+	) {
+		this.cmds = { ...base }
+	}
+
+	apply(variant: string | undefined): void {
+		if (variant) for (const w of this.writes(variant)) this.cmds[w.uuid] = w.cmd
+	}
+
+	get want(): Readonly<Record<string, number>> {
+		return this.cmds
+	}
 }
 
 // What a bone of a thinned rig holds on the server.
@@ -159,6 +209,14 @@ class Check {
 		if (!nbt) return null
 		const number = (key: string) => Number(new RegExp(`\\b${key}: (-?[\\d.]+(?:E-?\\d+)?)`).exec(nbt)![1])
 		return { matrix: rebuilt(nbt), duration: number('interpolation_duration'), cooldown: number('PortalCooldown'), shadow: number('shadow_strength') }
+	}
+
+	// The CustomModelData of each entity, one query at a time: the console answers in order, and concurrent queries
+	// would read each other's lines.
+	async cmds(uuids: string[]): Promise<Record<string, number>> {
+		const out: Record<string, number> = {}
+		for (const uuid of uuids) out[uuid] = Number(await this.entity(uuid, 'item.tag.CustomModelData'))
+		return out
 	}
 
 	async position(entity: string): Promise<number[] | null> {
@@ -264,7 +322,20 @@ async function main(): Promise<void> {
 	check.expect(displays.join() === 'ice:block,label:text,note:text,sword:item', `collect gave the displays ${displays.join()}`)
 	const locators = source.locators.map((l) => `${l.name}${l.entity ? ' with an entity' : ''}`).sort()
 	check.expect(locators.join() === 'mark with an entity,tip', `collect gave the locators ${locators.join()}`)
-	check.expect(source.variants.map((v) => `${v.name}:${v.textures.length}:${v.excluded.length}`).join() === 'alt:1:1', 'collect lost the variant, its textures or its excluded bone')
+	check.expect(source.variants.map((v) => `${v.name}:${v.textures.length}:${v.excluded.length}`).join() === 'alt:1:1,tip:1:5', 'collect lost a variant, its textures or its excluded bones')
+	// The frames each animation applies a variant at: a keyframe on a tick of its own, the later of two on one tick, one on
+	// the last tick of a loop (which counts as tick 0, applied again on the last tick), and one on the last tick of the others.
+	const wantCalls: Record<string, string> = {
+		curves: '0:alt,10:tip,20:default,30:alt',
+		squash: '0:default,10:alt,20:default',
+		hide: '5:alt,10:default,20:alt',
+		eased: '',
+		once: '10:tip,21:alt',
+	}
+	for (const [a, animation] of source.animations.entries()) {
+		const got = [...variantPlan(source, a)].sort((x, y) => x[0] - y[0]).map(([frame, variant]) => `${frame}:${variant}`).join()
+		check.expect(got === wantCalls[animation.name], `animation ${animation.name} applies variants at ${got}, expected ${wantCalls[animation.name]}`)
+	}
 	try {
 		// Start-up lines (offline mode, the flat world's settings) are about the test server, not the packs;
 		// the reload below loads every function again.
@@ -340,14 +411,26 @@ async function main(): Promise<void> {
 
 		// Every tick of every animation.
 		const animations: Record<string, number> = {}
+		const models = renderables(source).flatMap((r, i) => (r.display ? [] : [bone(i)]))
+		const base = await check.cmds(models)
+		const writesOf = (name: string) => variantWrites(world, 'synthetic', name)
 		for (const [a, animation] of source.animations.entries()) {
 			const n = animation.ticks
 			const ticks = animation.loop === 'loop' ? 2 * n + 2 : n + 3
 			let worst = 0
+			// Variants stay applied after an animation, so each one starts from the original models.
+			server.send('function rigel:synthetic/variant/default')
+			await server.sync()
+			const variants = new VariantState(base, writesOf)
+			const calls = variantPlan(source, a)
 			server.send(`function rigel:synthetic/play {ID:${a}}`)
 			// Expected frame after s steps: play writes f/0 and the first tick (same game time) keeps it.
 			for (let s = 0; s <= ticks; s++) {
 				if (s > 0) await check.step()
+				const called = frameAt(animation.loop, n, s)
+				if (called !== undefined) variants.apply(calls.get(called))
+				const held = await check.cmds(models)
+				for (const uuid of models) if (held[uuid] !== variants.want[uuid]) check.failures.push(`${animation.name} step ${s}: ${uuid} holds model ${held[uuid]}, expected ${variants.want[uuid]}`)
 				const t = Math.max(0, s - 1)
 				let want: number[][]
 				let wantLocators: number[][]
@@ -396,7 +479,7 @@ async function main(): Promise<void> {
 		report.variant = await checkVariant(check, source, world, bone)
 		report.displays = await checkDisplays(check, source, bone)
 
-		report.thinned = await checkThinned(check, source, rigs[2]!)
+		report.thinned = await checkThinned(check, source, rigs[2]!, world)
 
 		// tp moves the root (the bones ride along) and turns every bone, pitch included.
 		server.send('execute positioned 10.5 -60.0 3.25 rotated 90 30 run function rigel:synthetic/tp')
@@ -448,21 +531,12 @@ async function main(): Promise<void> {
 // Applies each variant and default: every bone a variant function writes holds that CustomModelData, the others keep
 // theirs, and the variant's function runs.
 async function checkVariant(check: Check, source: RigSource, world: string, bone: (b: number) => string) {
-	const dir = join(world, 'datapacks/synthetic/data/rigel/functions/synthetic/variant')
-	const writes = (name: string) =>
-		readFileSync(join(dir, `${name}.mcfunction`), 'utf8')
-			.split('\n')
-			.flatMap((l) => {
-				const m = /^data merge entity (\S+) \{item:\{tag:\{CustomModelData:(\d+)\}\}\}$/.exec(l)
-				return m ? [{ uuid: m[1]!, cmd: Number(m[2]) }] : []
-			})
+	const writes = (name: string) => variantWrites(world, 'synthetic', name)
 	const models = renderables(source).flatMap((r, i) => (r.display ? [] : [bone(i)]))
-	// One query at a time: the console answers in order, and concurrent queries would read each other's lines.
-	const cmds = async () => {
-		const out: Record<string, number> = {}
-		for (const uuid of models) out[uuid] = Number(await check.entity(uuid, 'item.tag.CustomModelData'))
-		return out
-	}
+	const cmds = () => check.cmds(models)
+	// The animations leave the variant of their last keyframe applied.
+	check.server.send('function rigel:synthetic/variant/default')
+	await check.server.sync()
 	const base = await cmds()
 	const report: Record<string, number> = {}
 	for (const v of [...source.variants.map((v) => v.name), 'default']) {
@@ -478,15 +552,17 @@ async function checkVariant(check: Check, source: RigSource, world: string, bone
 		}
 		const onApply = source.variants.find((x) => x.name === v)?.onApply
 		if (onApply) check.expect(((await check.score('$Applied', 'Rigel.Temp')) ?? 0) === applied + 1, `variant ${v}: ${onApply} did not run`)
-		// Every bone uses the swapped texture: the variant writes all but its excluded bones, and default writes them all.
-		const excludedCount = source.variants.find((x) => x.name === v)?.excluded.length ?? 0
+		// A variant writes the bones it does not exclude that some variant changes (every bone with a model here), and default all of them.
+		const excludedCount = (source.variants.find((x) => x.name === v)?.excluded ?? []).filter((index) => renderables(source).some((r) => r.index === index && !r.display)).length
 		check.expect(planned.length === models.length - excludedCount, `variant ${v}: ${planned.length} writes, expected ${models.length - excludedCount}`)
 		report[v] = planned.length
 	}
 	const restored = await cmds()
 	check.expect(models.every((uuid) => restored[uuid] === base[uuid]), 'variant default did not restore the models')
-	const excluded = source.variants.flatMap((v) => v.excluded.map((index) => renderables(source).findIndex((r) => r.index === index)))
-	check.expect(excluded.length > 0 && excluded.every((r) => !writes(source.variants[0]!.name).some((w) => w.uuid === bone(r))), 'an excluded bone is written by its variant')
+	for (const v of source.variants) {
+		const excluded = v.excluded.map((index) => renderables(source).findIndex((r) => r.index === index)).filter((r) => r >= 0)
+		check.expect(excluded.length > 0 && excluded.every((r) => !writes(v.name).some((w) => w.uuid === bone(r))), `an excluded bone is written by variant ${v.name}`)
+	}
 	return report
 }
 
@@ -523,15 +599,25 @@ const HOLD = 1_000_000_000
 
 // Plays every animation of the thinned rig and compares each bone after each step with the planned writes replayed
 // in the same order; then pauses inside a run, restarts and stops.
-async function checkThinned(check: Check, source: RigSource, settings: RigSettings) {
-	const plans = thinnedPlans(source, settings)
+async function checkThinned(check: Check, source: RigSource, settings: RigSettings, world: string) {
+	const writesOf = (name: string) => variantWrites(world, settings.rig, name)
+	// The entities are numbered from 1 after the root.
+	const rewritten = (name: string) => new Set(writesOf(name).map((w) => Number.parseInt(w.uuid.split('-').at(-1)!, 16) - 1))
+	const plans = thinnedPlans(source, settings, rewritten)
 	const bones = plans[0]!.values[0]!.length
 	const bone = (b: number) => uuidString(settings.id, b + 1)
+	// Every bone a variant rewrites has a run ending the frame before it is applied, which the next write starts from.
+	for (const [a, plan] of plans.entries())
+		for (const [f, variant] of plan.calls)
+			for (const r of f > 0 && plan.ends ? rewritten(variant) : [])
+				check.expect(plan.ends!(r).ends.includes(f - 1), `thinned animation ${a}: bone ${r} has no run ending at ${f - 1}, where ${variant} is applied`)
 	const self = `$Rigel.${settings.rig}`
 	const rest = expectations(source).rest
 	const fn = (name: string) => `function rigel:${settings.rig}/${name}`
 	check.expect((await check.result(`execute positioned 4.0 -60.0 0.0 rotated 0 0 run ${fn('spawn')}`)) !== 0, 'thinned: spawn failed')
 
+	const models = renderables(source).flatMap((r, i) => (r.display ? [] : [bone(i)]))
+	const base = await check.cmds(models)
 	const held: Held[] = rest.map((values) => ({ values, duration: 1 }))
 	const cooldown = rest.map(() => 0)
 	const apply = (a: number, f: number) => {
@@ -560,10 +646,17 @@ async function checkThinned(check: Check, source: RigSource, settings: RigSettin
 		long += plan.frames.flat().filter((w) => w.duration > 1).length
 		const n = plan.ticks
 		const steps = plan.loop === 'loop' ? 2 * n + 2 : n + 3
+		check.server.send(fn('variant/default'))
+		await check.server.sync()
+		const variants = new VariantState(base, writesOf)
 		check.server.send(`${fn('play')} {ID:${a}}`)
 		apply(a, 0)
 		for (let s = 0; s <= steps; s++) {
 			if (s > 0) await check.step()
+			const called = frameAt(plan.loop, n, s)
+			if (called !== undefined) variants.apply(plan.calls.get(called))
+			const cmds = await check.cmds(models)
+			for (const uuid of models) if (cmds[uuid] !== variants.want[uuid]) check.failures.push(`thinned ${a} step ${s}: ${uuid} holds model ${cmds[uuid]}, expected ${variants.want[uuid]}`)
 			// play wrote f/0, the first step keeps it; then one frame per step, a loop going round from f/n to f/1.
 			if (s >= 2) {
 				const t = s - 1
@@ -650,6 +743,8 @@ function shotSpec() {
 		{ name: 'curves-12', eye: [0, 1.2, 3.5], yaw: 180, pitch: 10, pose: { animation: 'curves', tick: 12 } },
 		{ name: 'squash-10', eye: [2.5, 2.0, 2.5], yaw: 135, pitch: 20, pose: { animation: 'squash', tick: 10 } },
 		{ name: 'eased-25', eye: [-2.5, 2.0, 2.5], yaw: 225, pitch: 20, pose: { animation: 'eased', tick: 25 } },
+		// Poses after a variant keyframe: alt at tick 5 of hide, tip at tick 10 of curves and of once.
+		{ name: 'hide-7', eye: [2.5, 2.0, 2.5], yaw: 135, pitch: 20, pose: { animation: 'hide', tick: 7 } },
 		{ name: 'once-15', eye: [3.5, 1.2, 0], yaw: 90, pitch: 10, pose: { animation: 'once', tick: 15 } },
 		// The displays from the front, where the text faces, and from behind the ice's corner.
 		{ name: 'displays-front', eye: [0, 1.4, 3.0], yaw: 180, pitch: 5 },

@@ -1,6 +1,6 @@
 import { commonPack, NAMESPACE, RESERVED_RIG_NAMES, rigPack, type PassengerInput, type VariantInput } from './datapack'
 import { displayNbt, displayProblems, normalizeId, RESOURCE_ID, snbtProblem, topLevelKeys } from './display'
-import { displayPoseString, locatorString, planFrames, poseString } from './frames'
+import { displayPoseString, locatorString, planEntries, planFrames, poseString } from './frames'
 import { itemModel } from './item-model'
 import { itemModelPath, mergeItemModel } from './resource-pack'
 import { animationRunEnds } from './thin'
@@ -180,13 +180,16 @@ export function buildExport(source: RigSource, settings: RigSettings, existingIt
 		const poses = Array.from({ length: a.ticks + 1 }, (_, f) => pose(a.matrices, f))
 		const tolerance = toleranceOf(a, settings)
 		const calls = variantCalls(a.loop, a.ticks, a.variantKeys.flatMap((k) => (k.variant === null ? [] : [{ time: k.time, variant: k.variant }])))
-		const frames = planFrames(a.loop, poses, tolerance && animationRunEnds(a.loop, poses, tolerance, settings.span, variantCuts(calls, rewritten)))
+		const runEnds = tolerance && animationRunEnds(a.loop, poses, tolerance, settings.span, variantCuts(calls, rewritten))
+		const ends = runEnds && renderable.map((_, r) => runEnds(r))
+		const runs = ends && ((bone: number) => ends[bone]!)
+		const frames = planFrames(a.loop, poses, runs)
 		const count = (plan: typeof frames) => plan.reduce((t, w) => t + w.length, 0)
 		writes.thinned += count(frames)
 		writes.full += tolerance ? count(planFrames(a.loop, poses)) : count(frames)
 		const shown = (f: number) => (f === a.ticks && a.loop === 'loop' ? 0 : f)
 		const locators = poses.map((_, f) => source.locators.map((_, l) => locatorString(a.locators, (shown(f) * locatorCount + l) * 3)))
-		return { name: a.name, loop: a.loop, priority: a.priority, poses, frames, locators, variants: calls }
+		return { name: a.name, loop: a.loop, priority: a.priority, poses, frames, locators, variants: calls, entries: runs && planEntries(a.loop, poses, runs) }
 	})
 	return {
 		rigPack: rigPack({

@@ -142,6 +142,7 @@ File メニューの「Export」から「Rigel のパックを書き出す」を
 |---|---|
 | `rigel:<リグ名>/spawn` | 実行位置に、実行者の向き（yaw・pitch）でリグを出す。すでに居れば失敗で返す |
 | `rigel:<リグ名>/play {ID:<番号>}` | アニメを最初から再生する。`with storage rigel:<リグ名> Argument` でも呼べる。無い番号ならチャットに赤字で出して失敗で返す |
+| `rigel:<リグ名>/tween {ID:<番号>,ticks:<tick 数>,frame:<フレーム>}` | 今見えている姿勢から `ticks` tick かけてアニメのフレーム `frame` の姿勢へ移り、着いた tick から続きを再生する（[tween](#tween)）。`with storage` でも呼べる。無い番号や 1 未満の `ticks` なら、チャットに赤字で出して失敗で返す |
 | `rigel:<リグ名>/stop` | 今の姿勢のまま再生を終える |
 | `rigel:<リグ名>/pause` | 今の姿勢のまま止める。再生中でなければ失敗で返す |
 | `rigel:<リグ名>/restart` | pause で止めたところから再生を続ける。pause 中でなければ失敗で返す |
@@ -163,6 +164,22 @@ locator の今の位置は、storage `rigel:<リグ名> Locators.<locator 名>` 
 
 アニメの番号は、Blockbench のアニメ一覧の並び順で 0 から振る。番号と名前の対応は、`play` の関数の先頭にコメントで書く。once のアニメは最後まで再生すると初期姿勢に戻り、hold のアニメは最後の姿勢で止まる。
 
+stop と pause の後、各 Bone は client に見えている姿勢で止まる。stop・pause を呼んだ tick に書いた Bone は、1 tick 前の姿勢で止まることがある。止めた Bone には長い `interpolation_duration` が残るので、Bone の `transformation` を自分で書き換えるときは `interpolation_duration` も書く。
+
+play を呼んだ tick と、once のアニメが初期姿勢へ戻る tick には、Bone は補間せずにその姿勢へ移る。同じ姿勢を書いて補間をやり直すと、client が前の補間をもう一度見せるからだ。
+
+stop・pause・tween のときは、Bone の `shadow_strength` を書き換えて、client に今の姿勢から補間をやり直させる。play と restart では 1 に戻す。`shadow_strength` は `shadow_radius` が 0（既定）なら見た目に出ない。追加の NBT で `shadow_strength` を指定しても、再生すると上書きされる。
+
+#### tween
+
+tween は、再生中・pause 中・止まっている間のどこからでも呼べる。呼んだ tick に、各 Bone は client に見えている姿勢から補間を始め、`ticks` tick 後にフレーム `frame` の姿勢に着く。着いた tick にフレーム `frame` の次のフレームを書き、そこからは play と同じ速さで進む。`ticks` を 1 にすると、今の姿勢から 1 tick で切り替わる。
+
+- `frame` がアニメの長さを超えたら、loop のアニメは長さで割った余りのフレーム、ほかは最後のフレームにする。hold のアニメの最後のフレームへ tween すると、着いた tick に止まる。
+- locator は、呼んだ tick に `frame` の位置へ移る。
+- variant は、着いた tick に、`frame` までの keyframe をすべて反映した状態になる。適用時の関数を呼ぶのは、`frame` ちょうどの keyframe の variant だけ。
+- 着くまでのあいだに pause すると、その姿勢で止まる。restart すると、残りの tick で `frame` の姿勢に着く。stop すると止まり、play や別の tween を呼ぶと、それに切り替わる。
+- 呼んだ tick に、フレーム 0 から `frame` までの関数を順に実行して、各 Bone を `frame` の姿勢にする。`frame` が大きいほど、その tick の処理が増える。
+
 `/reload` の後は、共通のデータパックが全リグのフレームの関数を優先度の高い順に温める（先に読み込んでおく）。1 tick に温めるのは 1 かたまりだけ。温め終わる前に再生しても、動きは変わらない。
 
 #### 間引き
@@ -172,11 +189,10 @@ locator の今の位置は、storage `rigel:<リグ名> Locators.<locator 名>` 
 - 書き込みが減るぶん、再生中の負荷と温めた後のメモリが減る。play を呼んだ tick のように全 Bone を書く tick の負荷は減らない。
 - client の 1 フレームに 150 ms ほどを超える時間がかかったり、server が遅れを取り戻したりして、4 tick 分以上の書き込みがまとめて届くと、消した Bone が次の区間のあいだ縮みながら見えることがある。
 - client が書き込みをまとめて受け取ったり、client のフレームが遅かったりすると、間引いたリグでは次の区間のあいだ、1 tick 分ほど遅れた姿勢が見えることがある。間引かないリグでは、次の tick で正しい姿勢に戻る。
-- 間引いたリグでは、stop と pause の後も、各 Bone は client に見えている姿勢で止まる。restart すると、区間の残りの tick で区間の終わりへ続く。pause を呼んだ tick に新しい区間を始めた Bone は、1 tick 前の姿勢で止まることがある。ループの 2 周目以降では、pause の直前に書いた Bone が、restart の後に 1 tick 分の動きを数 tick かけて追うことがある。
-- 間引いたリグを stop・pause した後で、間引きを切って書き出し直したら、リグを召喚し直す。召喚し直さないと、止めたときの長い `interpolation_duration` が Bone に残り、リグが動かなくなる。
-- 間引いたリグでは、play を呼んだ tick と once のアニメが初期姿勢へ戻る tick に、Bone は補間せずにその姿勢へ移る。同じ姿勢を書いて補間をやり直すと、client が前の区間の補間をもう一度見せるからだ。
+- 間引いたリグを restart すると、区間の残りの tick で区間の終わりへ続く。ループの 2 周目以降では、pause の直前に書いた Bone が、restart の後に 1 tick 分の動きを数 tick かけて追うことがある。
 - variant の keyframe がある tick では、その variant が書き込む Bone の区間を直前で区切り、その tick から次の区間を書き込む。client は、アイテムが替わると補間を表示中の姿勢からやり直すが、区間の進み具合は引き継ぐ。区間の途中でアイテムが替わると、Bone の動きが一瞬ずれるからだ。すでに止まっている Bone は書き込まない。区間を区切るぶん、その Bone の書き込みは増える。
-- 間引いたリグは、stop と pause のときに Bone の `shadow_strength` を書き換え、区間の終わりのフレーム番号を `PortalCooldown` に入れる。`shadow_strength` は `shadow_radius` が 0（既定）なら見た目に出ず、`PortalCooldown` は display entity の動きに関わらない。
+- 区間の途中のフレームへ tween すると、その区間で動いている Bone には、着いた tick に区間の残りを書く。そのため、着いた後も、play したときと同じ tick に区間の終わりへ着く。
+- 区間の終わりのフレーム番号は Bone の `PortalCooldown` に入れ、restart はこれで区間の残りの tick を求める。`PortalCooldown` は display entity の動きに関わらない。
 
 #### 書き出しの制限
 

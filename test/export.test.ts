@@ -3,7 +3,9 @@ import { existsSync, mkdirSync, mkdtempSync, promises, readdirSync, readFileSync
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { compose, normalizeQuat, quatToMat3, type Quat, type Vec3 } from '../src/bake/matrix'
-import { buildExport, ExportError, normalizeItem, settingsProblems } from '../src/export/build'
+import { buildExport, ExportError, normalizeItem, settingsFieldProblems, settingsProblems } from '../src/export/build'
+import { projectProblems } from '../src/export/project-ui'
+import type { ProjectSettings } from '../src/export/settings'
 import { commonPack, MARKER, rigPack, uuidString, type RigPackInput } from '../src/export/datapack'
 import { formatFloat, planChunks, planEntries, planFrames, poseString } from '../src/export/frames'
 import { boneScale, itemModel } from '../src/export/item-model'
@@ -482,7 +484,7 @@ describe('settings', () => {
 	const settings = (s: Partial<RigSettings>): RigSettings => ({ rig: 'axia', id: 1, item: 'minecraft:white_dye', chunkLines: 500, span: 20, teleportDuration: 1, ...s })
 	test('reserved and malformed values are reported', () => {
 		expect(settingsProblems(settings({}))).toEqual([])
-		for (const rig of ['core', 'const', 'warm', 'rigel', 'Axia', 'a-b', '']) expect(settingsProblems(settings({ rig })).length).toBe(1)
+		for (const rig of ['core', 'const', 'warm', 'rigel', 'Upper', 'a-b', '']) expect(settingsProblems(settings({ rig })).length).toBe(1)
 		expect(settingsProblems(settings({ item: 'white dye' })).length).toBe(1)
 		expect(settingsProblems(settings({ chunkLines: 0 })).length).toBe(1)
 		expect(settingsProblems(settings({ span: 0 })).length).toBe(1)
@@ -492,6 +494,19 @@ describe('settings', () => {
 		expect(settingsProblems(settings({ thin: { position: -1, rotation: 0.5 } })).length).toBe(1)
 		expect(settingsProblems(settings({ thin: { position: 0.01, rotation: Number.NaN } })).length).toBe(1)
 		expect(normalizeItem(' white_dye ')).toBe('minecraft:white_dye')
+	})
+
+	const project = (s: Partial<ProjectSettings>): ProjectSettings => ({ ...settings({}), datapacks: 'datapacks', resourcePack: 'resources', tolerance: { position: 0, rotation: 0 }, ...s })
+
+	test('settings saved from the dialog may leave the rig name, item and folders empty, but not malformed', () => {
+		expect(projectProblems(project({ rig: '', item: '', datapacks: '', resourcePack: '' }), true)).toEqual([])
+		expect(projectProblems(project({ rig: 'Upper' }), true).map((p) => p.page)).toEqual(['general'])
+		expect(settingsFieldProblems(settings({ rig: '', item: '' })).map((p) => p.field)).toEqual(['rig', 'item'])
+	})
+
+	test('each problem points to the settings page that holds its field', () => {
+		const found = projectProblems(project({ item: 'white dye', datapacks: '', chunkLines: 0, teleportDuration: 60 }))
+		expect(found.map((p) => p.page)).toEqual(['general', 'optimize', 'general', 'output'])
 	})
 })
 

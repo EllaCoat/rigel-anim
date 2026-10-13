@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import type { Vec3 } from '../src/bake/matrix'
 import { buildExport, ExportError } from '../src/export/build'
-import { blockStateNbt, displayNbt, snbtProblem, textJson, topLevelKeys } from '../src/export/display'
+import { blockStateNbt, boneNbtProblems, displayNbt, snbtProblem, textJson, topLevelKeys } from '../src/export/display'
 import { DEFAULT_TOLERANCE } from '../src/export/settings'
 import type { AnimationSource, BoneSource, DisplaySettings, Files, RigSettings, RigSource, TextureSource } from '../src/export/types'
 
@@ -296,5 +296,35 @@ describe('display', () => {
 	test('a display group must not hold cubes, and its settings are checked', () => {
 		expect(problems(rig({ bones: [bone('Sword', 0, item)] }))).toHaveLength(1)
 		expect(problems(rig({ bones: [bone('Body', 0), bone('Ice', undefined, { ...block, block: 'Ice Block' })] }))).toHaveLength(1)
+	})
+})
+
+describe('bone settings', () => {
+	const withNbt = (nbt: string): BoneSource => ({ ...bone('Body', 0), nbt })
+
+	test("a bone's extra NBT goes into its summon after the item", () => {
+		const spawn = lines(buildExport(rig({ bones: [withNbt('{brightness:{block:15,sky:15},Glowing:1b}')] }), settings, undefined).rigPack, fn('spawn'))[1]!
+		expect(spawn).toContain('{id:"minecraft:item_display",item:{id:"minecraft:white_dye",Count:1b,tag:{CustomModelData:1}},brightness:{block:15,sky:15},Glowing:1b,UUID:')
+	})
+
+	test('a bone without extra NBT summons as before', () => {
+		const spawn = lines(buildExport(rig({ bones: [withNbt('  ')] }), settings, undefined).rigPack, fn('spawn'))[1]!
+		expect(spawn).toContain('tag:{CustomModelData:1}},UUID:')
+	})
+
+	test("the extra NBT may not set the item or what stop, pause and tween write", () => {
+		for (const key of ['item', 'shadow_strength', 'PortalCooldown', 'Tags', 'transformation']) {
+			const found = boneNbtProblems('Body', `{${key}:1b}`)
+			expect(found).toHaveLength(1)
+			expect(found[0]).toContain(key)
+		}
+		expect(boneNbtProblems('Body', '{brightness:{block:15,sky:15}')).toHaveLength(1)
+		expect(boneNbtProblems('Body', '')).toEqual([])
+		expect(problems(rig({ bones: [withNbt('{PortalCooldown:3}')] }))).toHaveLength(1)
+	})
+
+	test("a display group's own NBT is used, not a bone's", () => {
+		const group = { ...bone('Ice', undefined, { scale: [1, 1, 1], nbt: '', kind: 'block', block: 'ice' }), nbt: '{PortalCooldown:3}' }
+		expect(problems(rig({ bones: [bone('Body', 0), group] }))).toEqual([])
 	})
 })

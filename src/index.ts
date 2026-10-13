@@ -1,8 +1,11 @@
+import { registerBoneSettings, unregisterBoneSettings } from './bone/settings'
+import { registerBoneUi, unregisterBoneUi } from './bone/ui'
 import { refreshAllDisplayPreviews, registerDisplayPreview, unregisterDisplayPreview } from './display/preview'
 import { registerDisplaySettings, unregisterDisplaySettings } from './display/settings'
 import { registerDisplayUi, unregisterDisplayUi } from './display/ui'
 import { registerEasingKeyframes, unregisterEasingKeyframes } from './easing/keyframes'
 import { registerEasingUi, unregisterEasingUi } from './easing/ui'
+import { registerAnimationUi, unregisterAnimationUi } from './export/animation-ui'
 import { registerExportSettings, unregisterExportSettings } from './export/settings'
 import { registerExportUi, unregisterExportUi } from './export/ui'
 import { registerFontSettings, unregisterFontSettings } from './font'
@@ -34,26 +37,32 @@ BBPlugin.register(PLUGIN_ID, {
 		registerVariantSettings()
 		registerDisplaySettings()
 		registerLocatorSettings()
+		registerBoneSettings()
 		registerExportUi()
+		registerAnimationUi()
 		registerVariantKeyframes(chosenId)
 		registerVariantPanel()
 		registerVariantView(redrawVariantPanel)
 		registerVariantUndo(refreshView)
 		registerDisplayUi()
 		registerLocatorUi()
+		registerBoneUi()
 		registerFontSettings(refreshAllDisplayPreviews)
 		registerDisplayPreview()
 	},
 	onunload() {
 		unregisterDisplayPreview()
 		unregisterFontSettings()
+		unregisterBoneUi()
 		unregisterLocatorUi()
 		unregisterDisplayUi()
 		unregisterVariantUndo()
 		unregisterVariantView()
 		unregisterVariantPanel()
 		unregisterVariantKeyframes()
+		unregisterAnimationUi()
 		unregisterExportUi()
+		unregisterBoneSettings()
 		unregisterLocatorSettings()
 		unregisterDisplaySettings()
 		unregisterVariantSettings()

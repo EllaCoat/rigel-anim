@@ -68,6 +68,23 @@ export function topLevelKeys(snbt: string): string[] {
 
 // Keys Rigel writes itself; another value would break the rig or its selection.
 const OWN_KEYS = ['id', 'UUID', 'Tags', 'transformation', 'Passengers', 'interpolation_duration', 'teleport_duration']
+// A bone's item carries its model and variants; stop, pause and tween write the other two.
+export const BONE_OWN_KEYS = [...OWN_KEYS, 'item', 'shadow_strength', 'PortalCooldown']
+
+// The keys an extra NBT adds to a summon compound, or '' for none.
+export const extraNbt = (nbt: string) => (nbt.trim() ? inner(nbt) : '')
+
+function extraNbtProblems(at: string, nbt: string, own: readonly string[]): string[] {
+	if (!nbt.trim()) return []
+	const p = snbtProblem(nbt)
+	if (p) return [`${at}: 追加の NBT は ${p}`]
+	const written = topLevelKeys(nbt).filter((k) => own.includes(k))
+	return written.length > 0 ? [`${at}: 追加の NBT に ${written.join('・')} は書けません（Rigel が書くため）。`] : []
+}
+
+export function boneNbtProblems(name: string, nbt: string): string[] {
+	return extraNbtProblems(`Bone「${name}」`, nbt, BONE_OWN_KEYS)
+}
 
 export function blockStateNbt(block: string): string | undefined {
 	const m = BLOCK_STATE.exec(normalizeId(block))
@@ -102,14 +119,7 @@ export function displayProblems(name: string, d: DisplaySettings): string[] {
 	const problems: string[] = []
 	const at = `display「${name}」`
 	if (!d.scale.every((v) => Number.isFinite(v))) problems.push(`${at}: 拡大は数にしてください。`)
-	if (d.nbt.trim()) {
-		const p = snbtProblem(d.nbt)
-		if (p) problems.push(`${at}: 追加の NBT は ${p}`)
-		else {
-			const own = topLevelKeys(d.nbt).filter((k) => OWN_KEYS.includes(k))
-			if (own.length > 0) problems.push(`${at}: 追加の NBT に ${own.join('・')} は書けません（Rigel が書くため）。`)
-		}
-	}
+	problems.push(...extraNbtProblems(at, d.nbt, OWN_KEYS))
 	if (d.kind === 'block') {
 		if (!blockStateNbt(d.block)) problems.push(`${at}: ブロックは minecraft:oak_stairs[facing=east] の形で入力してください。`)
 	} else if (d.kind === 'item') {
@@ -147,7 +157,7 @@ export function displayNbt(d: DisplaySettings): string {
 			`see_through:${bool(d.seeThrough)}`,
 			`default_background:${bool(d.defaultBackground)}`,
 		)
-	const extra = d.nbt.trim() ? inner(d.nbt) : ''
+	const extra = extraNbt(d.nbt)
 	if (extra) parts.push(extra)
 	return parts.join(',')
 }

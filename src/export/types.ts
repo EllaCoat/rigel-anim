@@ -61,6 +61,8 @@ export interface BoneSource {
 	pivot: Vec3
 	cubes: CubeSource[]
 	display?: DisplaySettings
+	// SNBT whose keys go into the summon compound of a bone drawn with cubes; a display has its own.
+	nbt?: string
 }
 
 export interface VariantSource {

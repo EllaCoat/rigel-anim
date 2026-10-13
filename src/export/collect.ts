@@ -1,5 +1,6 @@
 import type { Vec3 } from '../bake/matrix'
 import { collectBones, readBoneMatrices, readLocatorPositions, sampleAnimation, tickCount } from '../bake/sample'
+import { readBoneNbt } from '../bone/settings'
 import { readDisplay } from '../display/settings'
 import { readLocatorEntity } from '../locator/settings'
 import { keyframeVariant, variantKeyframes } from '../variant/keyframes'
@@ -93,6 +94,7 @@ export function collectRig(): RigSource {
 				pivot: [...g.origin] as Vec3,
 				cubes: g.children.filter((c): c is Cube => c instanceof Cube && exported(c)).map((c) => cubeSource(c, textures)),
 				display: exported(g) ? readDisplay(g) : undefined,
+				nbt: readBoneNbt(g),
 			})),
 			textures: textureSources,
 			...restPose(groups, locators),

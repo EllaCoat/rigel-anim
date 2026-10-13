@@ -116,7 +116,8 @@ export function syntheticRig() {
 	const arm = group('arm', [4, 12, 0], [[3, 6, -1], [5, 12, 1]], [hand, locator('mark', [5, 9, 1], 'minecraft:marker', '{data:{check:1b}}')])
 	const tailtip = group('tailtip', [0, 6, -8], [[-1, 5, -10], [1, 7, -8]])
 	const tail = group('tail', [0, 6, -4], [[-1, 5, -8], [1, 7, -4]], [tailtip])
-	const gem = group('gem', [0, 16, 0], [[-1, 16, -1], [1, 18, 1]])
+	// Keys that draw nothing, so the shots stay as they were.
+	const gem = group('gem', [0, 16, 0], [[-1, 16, -1], [1, 18, 1]], [], { rigel_nbt: `{view_range:2f,CustomName:'"gem"'}` })
 	const pivot = group('pivot', [0, 14, 0], undefined, [gem])
 	const label = display('label', [0, 20, 0], {
 		kind: 'text',

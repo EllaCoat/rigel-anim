@@ -186,6 +186,17 @@ function selectAllShown(): void {
 	updateKeyframeSelection()
 }
 
+let originalScrollTo: GeneralAnimator['scrollTo'] | undefined
+
+function scrollToShownRow(this: GeneralAnimator): GeneralAnimator {
+	if (isRigelProject()) {
+		applyFilter()
+		if (!shown(this)) return this
+	}
+	originalScrollTo?.call(this)
+	return this
+}
+
 function buildBar(): HTMLElement {
 	const element = document.createElement('div')
 	element.className = BAR
@@ -289,6 +300,8 @@ export function registerTimelineBar(): void {
 			run: selectAllShown,
 		}),
 	]
+	originalScrollTo = GeneralAnimator.prototype.scrollTo
+	GeneralAnimator.prototype.scrollTo = scrollToShownRow
 	refresh()
 }
 
@@ -300,6 +313,8 @@ export function unregisterTimelineBar(): void {
 	observed = undefined
 	for (const listener of listeners) listener.delete()
 	listeners = []
+	if (originalScrollTo) GeneralAnimator.prototype.scrollTo = originalScrollTo
+	originalScrollTo = undefined
 	showAllRows()
 	if (bar) {
 		bar.remove()

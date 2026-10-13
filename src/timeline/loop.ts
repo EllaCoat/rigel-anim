@@ -1,7 +1,7 @@
 import { nearestTick, TICKS_PER_SECOND } from '../bake/sample'
 import { isRigelProject } from '../easing/keyframes'
 import { barState, onRefresh, setBarStatus, setToggle, timelineBody } from './bar'
-import { loopBack, loopLabel, type LoopRange } from './ticks'
+import { loopBack, loopLabel, loopSpan, type LoopRange } from './ticks'
 
 const MARKER = 'rigel-ab-marker'
 
@@ -70,13 +70,38 @@ function show(active: boolean): void {
 	}
 }
 
+let lastFrame: number | undefined
+let restartAtPause = false
+
+function playedRange(): LoopRange | undefined {
+	const range = rangeOf(BBAnimation.selected)
+	return barState.abLoop && isRigelProject() && Modes.animate && loopSpan(range) ? range : undefined
+}
+
 // The frame is shown after the jump back, so a pose past B is never drawn.
-function loopPlayback(): void {
-	if (!barState.abLoop || !Timeline.playing || !isRigelProject()) return
-	const back = loopBack(Timeline.time, rangeOf(BBAnimation.selected))
-	if (back === undefined) return
-	Timeline.setTime(back)
-	Animator.preview(true)
+function loopPlayback(data?: { in_loop?: boolean }): void {
+	const previous = lastFrame
+	lastFrame = undefined
+	const range = playedRange()
+	if (!Timeline.playing || !range) return
+	const inLoop = data?.in_loop
+	const back = loopBack(Timeline.time, inLoop === undefined ? undefined : previous, range)
+	if (back !== undefined) {
+		Timeline.setTime(back)
+		Animator.preview(true)
+	}
+	if (inLoop !== undefined) restartAtPause = inLoop === false
+	lastFrame = Timeline.time
+}
+
+function restartFromA(): void {
+	lastFrame = undefined
+	if (!restartAtPause) return
+	restartAtPause = false
+	const span = loopSpan(playedRange() ?? {})
+	if (!span) return
+	Timeline.setTime(span.start)
+	Timeline.start()
 }
 
 export function registerAbLoop(): void {
@@ -115,7 +140,10 @@ export function registerAbLoop(): void {
 			click: clear,
 		}),
 	]
-	listeners = [Blockbench.on('display_animation_frame', loopPlayback)]
+	listeners = [
+		Blockbench.on('display_animation_frame', (data) => loopPlayback(data as { in_loop?: boolean })),
+		Blockbench.on('timeline_pause', restartFromA),
+	]
 	stopRefresh = onRefresh(show)
 	const timeline = Timeline.vue as unknown as { size: number; head_width: number; $watch(source: () => string, callback: () => void): () => void }
 	stopWatchingZoom = timeline.$watch(
@@ -140,4 +168,6 @@ export function unregisterAbLoop(): void {
 	style?.delete()
 	style = undefined
 	ranges = new WeakMap()
+	lastFrame = undefined
+	restartAtPause = false
 }

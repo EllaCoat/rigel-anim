@@ -82,17 +82,27 @@ describe('jumping between keyframes', () => {
 
 describe('A-B loop', () => {
 	test('goes back to A once B is passed, and not before', () => {
-		expect(loopBack(1.01, { a: 10, b: 20 })).toBe(0.5)
-		expect(loopBack(1, { a: 10, b: 20 })).toBeUndefined()
-		expect(loopBack(0.3, { a: 10, b: 20 })).toBeUndefined()
+		expect(loopBack(1.01, 0.96, { a: 10, b: 20 })).toBe(0.5)
+		expect(loopBack(1, 0.95, { a: 10, b: 20 })).toBeUndefined()
+		expect(loopBack(0.3, 0.25, { a: 10, b: 20 })).toBeUndefined()
+	})
+
+	test('goes back to A when B is at the end and Blockbench has wrapped the playhead to the start', () => {
+		expect(loopBack(0, 1.98, { a: 10, b: 40 })).toBe(0.5)
+		expect(loopBack(0, undefined, { a: 10, b: 40 })).toBeUndefined()
+		expect(loopBack(0, 1.98, { a: 0, b: 40 })).toBeUndefined()
+	})
+
+	test('leaves a move back that stays inside the range alone', () => {
+		expect(loopBack(0.7, 1.5, { a: 10, b: 40 })).toBeUndefined()
 	})
 
 	test('does nothing with an end missing, or with A not before B', () => {
-		expect(loopBack(5, { a: 10 })).toBeUndefined()
-		expect(loopBack(5, { b: 20 })).toBeUndefined()
-		expect(loopBack(5, {})).toBeUndefined()
-		expect(loopBack(5, { a: 20, b: 20 })).toBeUndefined()
-		expect(loopBack(5, { a: 30, b: 20 })).toBeUndefined()
+		expect(loopBack(5, 4.95, { a: 10 })).toBeUndefined()
+		expect(loopBack(5, 4.95, { b: 20 })).toBeUndefined()
+		expect(loopBack(5, 4.95, {})).toBeUndefined()
+		expect(loopBack(5, 4.95, { a: 20, b: 20 })).toBeUndefined()
+		expect(loopBack(0, 4.95, { a: 30, b: 20 })).toBeUndefined()
 	})
 
 	test('the ends are shown in ticks', () => {

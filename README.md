@@ -122,7 +122,7 @@ Animate の画面では、Timeline の上にバーが出る。
 | 選んでいる行だけ | 鎖のボタン。アウトライナーで選んでいる Group とその子の行だけを表示する。Effects の行は常に表示する |
 | パンくず | 行の名前にマウスを乗せると、親からの階層（`body > arm > hand` など）を左に出す |
 | キーフレームへ移動 | Timeline を操作している間、Shift+→ と Shift+← で、選んでいる行の次・前のキーフレームの tick へ移る。Effects の行では Variant のキーフレームにも止まる |
-| A-B ループ | Alt+Shift+A と Alt+Shift+B で、再生位置に A と B を置く。ループのボタンか Alt+Shift+L で入れると、再生中に B を過ぎたら A に戻る。Alt+Shift+X で解除する。A と B はアニメごとに持ち、バーの右端に tick で出る |
+| A-B ループ | Alt+Shift+A と Alt+Shift+B で、再生位置に A と B を置く。ループのボタンか Alt+Shift+L で入れると、再生中に B を過ぎたら A に戻る。B がアニメの末尾にあるときや、ループの設定が once か hold のアニメでも、A から繰り返す。Alt+Shift+X で解除する。A と B はアニメごとに持ち、バーの右端に tick で出る |
 | オニオンスキン | レイヤーのボタン。選んでいる Group（中の display を含む）の前後の tick の姿勢を、前は青、後ろは橙で重ねて表示する。範囲は Animation メニューの「オニオンスキンの範囲…」で 1〜5 tick にする |
 
 [blockbench-anim-ux](https://github.com/EllaCoat/blockbench-anim-ux) を一緒に読み込んでいても、Rigel Rig のプロジェクトでは anim-ux の同じ機能は出ない（anim-ux 0.11.0 以降）。

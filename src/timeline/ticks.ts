@@ -14,11 +14,18 @@ export interface LoopRange {
 	b?: number
 }
 
-// Where playback goes back to once it is past B; undefined while the loop has no valid range (A before B) or B is not passed.
-export function loopBack(time: number, range: LoopRange): number | undefined {
+export function loopSpan(range: LoopRange): { start: number; end: number } | undefined {
 	const { a, b } = range
-	if (a === undefined || b === undefined || a >= b) return undefined
-	return time > b / TICKS_PER_SECOND ? a / TICKS_PER_SECOND : undefined
+	return a !== undefined && b !== undefined && a < b ? { start: a / TICKS_PER_SECOND, end: b / TICKS_PER_SECOND } : undefined
+}
+
+// Where playback goes back to once it is past B, or once it has gone back from `previous` to before A; undefined while the
+// loop has no valid range (A before B) or neither has happened.
+export function loopBack(time: number, previous: number | undefined, range: LoopRange): number | undefined {
+	const span = loopSpan(range)
+	if (!span) return undefined
+	if (time > span.end) return span.start
+	return previous !== undefined && time < previous && time < span.start ? span.start : undefined
 }
 
 export function loopLabel(range: LoopRange): string {

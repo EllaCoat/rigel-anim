@@ -125,7 +125,7 @@ Animate の画面では、Timeline の上にバーが出る。
 | A-B ループ | Alt+Shift+A と Alt+Shift+B で、再生位置に A と B を置く。ループのボタンか Alt+Shift+L で入れると、再生中に B を過ぎたら A に戻る。B がアニメの末尾にあるときや、ループの設定が once か hold のアニメでも、A から繰り返す。Alt+Shift+X で解除する。A と B はアニメごとに持ち、バーの右端に tick で出る |
 | オニオンスキン | レイヤーのボタン。選んでいる Group（中の display を含む）の前後の tick の姿勢を、前は青、後ろは橙で重ねて表示する。範囲は Animation メニューの「オニオンスキンの範囲…」で 1〜5 tick にする |
 
-Rigel Rig のプロジェクトで新しく作るアニメーションは、snapping（Timeline の 1 秒あたりのコマ数）が 20 になる。1 コマが 1 tick になるので、`,` と `.` のコマ送りや、キーフレームを動かしたときの位置が tick に揃う。既にあるアニメーションの snapping は変えない。揃えたいときは、アニメーションのプロパティで 20 にする。
+Rigel Rig のプロジェクトで新しく作るアニメーションは、snapping（Timeline の 1 秒あたりのコマ数）が 20 になる。1 コマが 1 tick になるので、`,` と `.` のコマ送りや、キーフレームを動かしたときの位置が tick に揃う。既にあるアニメーションや、複製・貼り付けで足したアニメーションの snapping は、元の値のまま変えない。揃えたいときは、アニメーションのプロパティで 20 にする。
 
 [blockbench-anim-ux](https://github.com/EllaCoat/blockbench-anim-ux) を一緒に読み込んでいても、Rigel Rig のプロジェクトでは anim-ux の同じ機能は出ない（anim-ux 0.11.0 以降）。
 

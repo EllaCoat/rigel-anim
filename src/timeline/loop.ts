@@ -5,7 +5,7 @@ import { loopBack, loopLabel, type LoopRange } from './ticks'
 
 const MARKER = 'rigel-ab-marker'
 
-// The z-index puts the lines over the animator rows.
+// The z-index puts the lines over the keyframes and under the row names.
 const CSS = `
 .${MARKER} {
 	position: absolute;
@@ -13,7 +13,7 @@ const CSS = `
 	bottom: 0;
 	width: 2px;
 	pointer-events: none;
-	z-index: 100;
+	z-index: 4;
 }
 .${MARKER}-a { background-color: #66cc66; box-shadow: 0 0 4px rgba(102, 204, 102, 0.6); }
 .${MARKER}-b { background-color: #cc6666; box-shadow: 0 0 4px rgba(204, 102, 102, 0.6); }

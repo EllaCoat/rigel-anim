@@ -137,44 +137,51 @@ function showAllRows(): void {
 	for (const row of timelineBody()?.querySelectorAll<HTMLElement>('li.animator') ?? []) setRowHidden(row, false)
 }
 
+const shown = (animator: GeneralAnimator): boolean =>
+	rowVisible(
+		{
+			name: animator.name,
+			hasKeyframes: animator.keyframes.length > 0,
+			selected: !!OutlinerNode.uuids[animator.uuid]?.selected,
+			effects: animator instanceof EffectAnimator,
+		},
+		barState,
+	)
+
+const graphEditorOpen = (): boolean => (Timeline.vue as unknown as { graph_editor_open: boolean }).graph_editor_open
+
 function applyFilter(): void {
 	const body = timelineBody()
 	if (!body) return
 	const animators = new Map(Timeline.animators.map((animator) => [animator.uuid as string, animator]))
 	for (const row of body.querySelectorAll<HTMLElement>('li.animator')) {
-		const uuid = row.getAttribute('uuid') ?? ''
-		const animator = animators.get(uuid)
-		if (!animator) continue
-		const visible = rowVisible(
-			{
-				name: row.querySelector('.timeline_animator_name')?.textContent?.trim() ?? '',
-				hasKeyframes: animator.keyframes.length > 0,
-				selected: !!OutlinerNode.uuids[uuid]?.selected,
-				effects: animator instanceof EffectAnimator,
-			},
-			barState,
-		)
-		setRowHidden(row, !visible)
+		const animator = animators.get(row.getAttribute('uuid') ?? '')
+		if (animator) setRowHidden(row, !shown(animator))
 	}
+	deselectHidden()
 }
 
-type Selector = { move: () => void; selecting: boolean; selected_before: BBKeyframe[] }
-const selector = (): Selector => (Timeline as unknown as { selector: Selector }).selector
-let blockbenchMove: Selector['move'] | undefined
-
-// Blockbench places a row's keyframes for a box selection by the row's offsetTop, which a hidden row has as 0: a box at
-// the top would take keyframes no one can see.
-// The graph editor places keyframes by their values instead, and a click without dragging selects nothing.
-function dropHiddenFromBox(): void {
-	if (!selector().selecting || (Timeline.vue as unknown as { graph_editor_open: boolean }).graph_editor_open) return
-	const hidden = new Set([...(timelineBody()?.querySelectorAll<HTMLElement>('li.animator') ?? [])].filter((row) => HIDDEN in row.dataset).map((row) => row.getAttribute('uuid')))
-	if (hidden.size === 0) return
-	const before = selector().selected_before
-	const dropped = Timeline.selected.filter((keyframe) => hidden.has(keyframe.animator.uuid) && !before.includes(keyframe))
+// Blockbench selects keyframes of every row, hidden ones included: select all, Shift with a click on the time ruler, and a
+// box selection, which places a row's keyframes by the row's offsetTop, 0 for a hidden row.
+// The graph editor shows the keyframes of the selected row by their values, whether the row is hidden or not.
+function deselectHidden(): void {
+	if (graphEditorOpen()) return
+	const dropped = Timeline.selected.filter((keyframe) => !shown(keyframe.animator))
 	if (dropped.length === 0) return
 	for (const keyframe of dropped) {
 		keyframe.selected = false
 		Timeline.selected.remove(keyframe)
+	}
+	updateKeyframeSelection()
+}
+
+function selectAllShown(): void {
+	const keyframes = Timeline.keyframes.filter((keyframe) => shown(keyframe.animator))
+	const select = keyframes.some((keyframe) => !keyframe.selected)
+	for (const keyframe of keyframes) {
+		if (select && !keyframe.selected) Timeline.selected.push(keyframe)
+		if (!select) Timeline.selected.remove(keyframe)
+		keyframe.selected = select
 	}
 	updateKeyframeSelection()
 }
@@ -271,14 +278,15 @@ export function registerTimelineBar(): void {
 		Blockbench.on('update_selection', () => {
 			if (barState.onlySelected) scheduleRefresh()
 		}),
+		Blockbench.on('update_keyframe_selection', () => {
+			if (isRigelProject()) deselectHidden()
+		}),
+		SharedActions.add('select_all', {
+			subject: 'rigel_timeline_shown_rows',
+			condition: () => Animator.open && Prop.active_panel === 'timeline' && !!BBAnimation.selected && isRigelProject() && !graphEditorOpen() && Timeline.animators.some((animator) => !shown(animator)),
+			run: selectAllShown,
+		}),
 	]
-	// Blockbench reads the property when a box selection starts, so the wrapper is what runs while dragging.
-	const move = selector().move
-	blockbenchMove = move
-	selector().move = () => {
-		move()
-		dropHiddenFromBox()
-	}
 	refresh()
 }
 
@@ -290,8 +298,6 @@ export function unregisterTimelineBar(): void {
 	observed = undefined
 	for (const listener of listeners) listener.delete()
 	listeners = []
-	if (blockbenchMove) selector().move = blockbenchMove
-	blockbenchMove = undefined
 	showAllRows()
 	if (bar) {
 		bar.remove()

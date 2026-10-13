@@ -49,7 +49,10 @@ function collectSources(group: Group): THREE.Mesh[] {
 }
 
 function ghostRoot(): THREE.Object3D {
-	root ??= Object.assign(new three.Object3D(), { name: ROOT, no_export: true })
+	if (!root) {
+		root = Object.assign(new three.Object3D(), { name: ROOT, no_export: true })
+		Canvas.gizmos.push(root)
+	}
 	if (root.parent !== Canvas.scene) Canvas.scene.add(root)
 	return root
 }
@@ -205,6 +208,9 @@ export function unregisterOnionSkin(): void {
 	dialog = undefined
 	clearGhosts()
 	clearMaterials()
-	if (root) Canvas.scene.remove(root)
+	if (root) {
+		Canvas.scene.remove(root)
+		Canvas.gizmos.remove(root)
+	}
 	root = undefined
 }

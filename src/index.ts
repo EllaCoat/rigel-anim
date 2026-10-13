@@ -17,6 +17,7 @@ import { registerBreadcrumb, unregisterBreadcrumb } from './timeline/breadcrumb'
 import { registerKeyframeJump, unregisterKeyframeJump } from './timeline/jump'
 import { registerAbLoop, unregisterAbLoop } from './timeline/loop'
 import { registerOnionSkin, unregisterOnionSkin } from './timeline/onion'
+import { registerTickSnapping, unregisterTickSnapping } from './timeline/snapping'
 import { registerVariantSettings, unregisterVariantSettings } from './variant/settings'
 import { registerVariantKeyframes, unregisterVariantKeyframes } from './variant/keyframes'
 import { redrawVariantPanel, registerVariantPanel, unregisterVariantPanel } from './variant/panel'
@@ -59,8 +60,10 @@ BBPlugin.register(PLUGIN_ID, {
 		registerKeyframeJump()
 		registerAbLoop()
 		registerOnionSkin()
+		registerTickSnapping()
 	},
 	onunload() {
+		unregisterTickSnapping()
 		unregisterOnionSkin()
 		unregisterAbLoop()
 		unregisterKeyframeJump()

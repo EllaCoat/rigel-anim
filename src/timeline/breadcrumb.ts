@@ -36,9 +36,10 @@ function untag(): void {
 let tooltip: HTMLElement | undefined
 
 // On the body, not in the panel: other panels stack above anything inside it.
-function tooltipElement(): HTMLElement {
-	if (!tooltip) {
-		tooltip = document.createElement('div')
+function tooltipElement(owner: Document): HTMLElement {
+	if (tooltip?.ownerDocument !== owner) {
+		tooltip?.remove()
+		tooltip = owner.createElement('div')
 		tooltip.id = TOOLTIP
 		tooltip.style.cssText = [
 			'position: fixed',
@@ -56,7 +57,7 @@ function tooltipElement(): HTMLElement {
 			'box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35)',
 			'transform: translateY(-50%)',
 		].join('; ')
-		document.body.append(tooltip)
+		owner.body.append(tooltip)
 	}
 	return tooltip
 }
@@ -70,11 +71,16 @@ function onOver(event: MouseEvent): void {
 	const path = name?.getAttribute(ATTRIBUTE)
 	if (!name || !path) return hideTooltip()
 	const rect = name.getBoundingClientRect()
-	const element = tooltipElement()
+	const element = tooltipElement(name.ownerDocument)
 	element.textContent = path
 	element.style.display = 'block'
-	element.style.right = `${Math.max(8, window.innerWidth - rect.left + 12)}px`
 	element.style.top = `${rect.top + rect.height / 2}px`
+	element.style.left = ''
+	element.style.right = `${(name.ownerDocument.defaultView ?? window).innerWidth - rect.left + 12}px`
+	if (rect.left - 12 - element.offsetWidth < 8) {
+		element.style.right = ''
+		element.style.left = `${rect.right + 12}px`
+	}
 }
 
 function onOut(event: MouseEvent): void {

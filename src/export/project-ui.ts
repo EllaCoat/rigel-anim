@@ -100,16 +100,18 @@ export function openProjectSettings(page: SettingsPage, onExport: () => void, ex
 		sidebar: {
 			pages: PAGES,
 			page,
-			actions: [
-				{
-					name: '書き出す',
-					icon: 'movie',
-					description: '設定を保存して、パックを書き出します。',
-					click: () => {
-						if (dialog) saveAndExport(dialog.getFormResult())
-					},
-				},
-			],
+			actions: exporting
+				? []
+				: [
+						{
+							name: '書き出す',
+							icon: 'movie',
+							description: '設定を保存して、パックを書き出します。',
+							click: () => {
+								if (dialog) saveAndExport(dialog.getFormResult())
+							},
+						},
+					],
 			onPageSwitch(next: string) {
 				shown = next as SettingsPage
 				dialog?.form?.update(dialog.getFormResult())

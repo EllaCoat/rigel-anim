@@ -1,5 +1,5 @@
 import { commonPack, NAMESPACE, RESERVED_RIG_NAMES, rigPack, type PassengerInput, type VariantInput } from './datapack'
-import { displayNbt, displayProblems, normalizeId, RESOURCE_ID, snbtProblem, topLevelKeys } from './display'
+import { boneNbtProblems, displayNbt, displayProblems, extraNbt, normalizeId, RESOURCE_ID, snbtProblem, topLevelKeys } from './display'
 import { displayPoseString, locatorString, planEntries, planFrames, poseString } from './frames'
 import { itemModel } from './item-model'
 import { itemModelPath, mergeItemModel } from './resource-pack'
@@ -110,7 +110,10 @@ export function buildExport(source: RigSource, settings: RigSettings, existingIt
 	const entityNames = new Set<string>()
 	const displayNames = renderable.map(({ bone }) => (bone.display ? uniqueName(bone.name, entityNames) : undefined))
 	renderable.forEach(({ bone }) => {
-		if (!bone.display) return
+		if (!bone.display) {
+			if (bone.nbt) problems.push(...boneNbtProblems(bone.name, bone.nbt))
+			return
+		}
 		if (bone.cubes.length > 0) problems.push(`display「${bone.name}」に Cube が入っています。display の Group には Cube を入れないでください。`)
 		problems.push(...displayProblems(bone.name, bone.display))
 	})
@@ -165,7 +168,8 @@ export function buildExport(source: RigSource, settings: RigSettings, existingIt
 		const m = models[r]
 		const rest = m ? poseString(source.rest, index * 16, m.scale) : displayPoseString(source.rest, index * 16, bone.display!.scale)
 		if (!m) return { nbt: displayNbt(bone.display!), name: displayNames[r], rest }
-		return { nbt: `id:"minecraft:item_display",item:{id:"${settings.item}",Count:1b,tag:{CustomModelData:${cmdOf.get(m.name)}}}`, rest }
+		const extra = extraNbt(bone.nbt ?? '')
+		return { nbt: `id:"minecraft:item_display",item:{id:"${settings.item}",Count:1b,tag:{CustomModelData:${cmdOf.get(m.name)}}}${extra ? `,${extra}` : ''}`, rest }
 	})
 	// Bones some variant changes; a variant writes all of them it does not exclude, so applying it undoes the others there.
 	const changed = renderable.flatMap((_, r) => (variantModels.some((vm) => vm[r] !== undefined) ? [r] : []))

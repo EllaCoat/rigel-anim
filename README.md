@@ -75,6 +75,10 @@ Blockbench で作ったモデルとアニメーションを、Minecraft Java Edi
 
 Bone の下に Locator を置くと、アニメ中のその位置で関数を実行できる。Locator を右クリックして「locator の entity」を選ぶと、locator の位置に entity（当たり判定の mob や marker など）を置いておける。置く entity は、自分では動かないもの（marker や NoAI の mob）にする。entity は、locator が動いた tick と `tp` のときにだけ置き直す。そのため、重力で落ちたり押されたりして動く entity は、次に置き直すまでずれたままになる。
 
+### Bone の設定
+
+Cube を持つ Group（Bone）を右クリックして「Rigel の Bone 設定」を選ぶと、その Bone の entity を召喚するときに足す NBT を、「追加の NBT」の欄で指定できる。`brightness`・`Glowing`・`view_range` などに使う。`id`・`UUID`・`Tags`・`Passengers`・`transformation`・`interpolation_duration`・`teleport_duration`・`item`・`shadow_strength`・`PortalCooldown` は Rigel が書くため使えない。変更は Undo・Redo できる。display の Group では、「display の設定」の追加の NBT を使う。
+
 ### display
 
 outliner の「display を追加」で、ブロック表示（block_display）・アイテム表示（item_display）・テキスト表示（text_display）を追加する。display は設定を持つ Group として作られ、Bone と同じようにキーフレームで動かせる。設定は、Group を右クリックして「display の設定」で変える。

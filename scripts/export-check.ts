@@ -511,6 +511,7 @@ async function main(): Promise<void> {
 
 		report.variant = await checkVariant(check, source, world, bone)
 		report.displays = await checkDisplays(check, source, bone)
+		report.boneNbt = await checkBoneNbt(check, source, bone)
 
 		report.thinned = await checkThinned(check, source, rigs[2]!, world)
 		report.tween = { thinned: await checkTween(check, source, rigs[2]!, world, '4.0 -60.0 0.0'), full: await checkTween(check, source, rigs[0]!, world, '0.0 -60.0 0.0') }
@@ -632,6 +633,20 @@ async function checkDisplays(check: Check, source: RigSource, bone: (b: number) 
 		for (const w of [...want, `"rigel.synthetic.${name}"`]) check.expect(nbt.includes(w), `display ${name}: ${w} missing from ${nbt.slice(0, 200)}`)
 		found.push(`${name}:${d.kind}`)
 	}
+	return found
+}
+
+// A bone's extra NBT, saved in the model and read by collect, arrives in its entity.
+async function checkBoneNbt(check: Check, source: RigSource, bone: (b: number) => string) {
+	const found: string[] = []
+	for (const [r, entity] of renderables(source).entries()) {
+		const b = source.bones[entity.index]!
+		if (entity.display || !b.nbt) continue
+		const nbt = (await check.entity(bone(r), '')) ?? ''
+		for (const w of ['view_range: 2.0f', 'CustomName: ']) check.expect(nbt.includes(w), `bone ${b.name}: ${w} missing from ${nbt.slice(0, 200)}`)
+		found.push(b.name)
+	}
+	check.expect(found.join() === 'gem', `collect gave extra NBT to the bones ${found.join()}`)
 	return found
 }
 

@@ -163,7 +163,7 @@ const selector = (): Selector => (Timeline as unknown as { selector: Selector })
 let blockbenchMove: Selector['move'] | undefined
 
 // Blockbench places a row's keyframes for a box selection by the row's offsetTop, which a hidden row has as 0: a box at
-// the top would take keyframes no one can see. Those of hidden rows are let go, unless they were selected before the box.
+// the top would take keyframes no one can see.
 // The graph editor places keyframes by their values instead, and a click without dragging selects nothing.
 function dropHiddenFromBox(): void {
 	if (!selector().selecting || (Timeline.vue as unknown as { graph_editor_open: boolean }).graph_editor_open) return

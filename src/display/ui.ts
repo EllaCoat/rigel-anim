@@ -10,7 +10,6 @@ const EDIT_ID = 'rigel_display_settings'
 const KIND_LABELS: Record<DisplayKind, string> = { block: 'ブロック表示（block_display）', item: 'アイテム表示（item_display）', text: 'テキスト表示（text_display）' }
 
 let addAction: Action | undefined
-let editAction: Action | undefined
 let dialog: Dialog | undefined
 
 type FormResult = Record<string, unknown>
@@ -107,6 +106,25 @@ const selectedGroup = (): Group | undefined => {
 	return g instanceof Group ? g : undefined
 }
 
+const menuEntries = [
+	{
+		id: EDIT_ID,
+		name: 'display の設定',
+		icon: 'tune',
+		condition: (group: unknown) => isRigelProject() && group instanceof Group && !!readDisplay(group),
+		click: (group: unknown) => {
+			if (group instanceof Group) openDisplayDialog({ edit: group })
+		},
+	},
+	{
+		id: ADD_ID,
+		name: 'display を追加',
+		icon: 'text_fields',
+		condition: () => isRigelProject(),
+		click: (group: unknown) => openDisplayDialog({ parent: group instanceof Group ? group : undefined }),
+	},
+]
+
 export function registerDisplayUi(): void {
 	addAction = new Action(ADD_ID, {
 		name: 'display を追加',
@@ -115,30 +133,16 @@ export function registerDisplayUi(): void {
 		condition: () => isRigelProject(),
 		click: () => openDisplayDialog({ parent: selectedGroup() }),
 	})
-	editAction = new Action(EDIT_ID, {
-		name: 'display の設定',
-		icon: 'tune',
-		category: 'edit',
-		condition: () => isRigelProject() && !!selectedGroup() && !!readDisplay(selectedGroup()!),
-		click: () => {
-			const group = selectedGroup()
-			if (group) openDisplayDialog({ edit: group })
-		},
-	})
 	// The toolbar keeps its children across reloads, so a reload must not add the button again.
 	if (!Toolbars.outliner.children.some((c) => c === ADD_ID || (typeof c === 'object' && c.id === ADD_ID))) Toolbars.outliner.add(addAction)
-	Group.prototype.menu?.addAction(editAction)
-	Group.prototype.menu?.addAction(addAction)
+	for (const entry of menuEntries) Group.prototype.menu?.addAction(entry)
 }
 
 export function unregisterDisplayUi(): void {
-	Group.prototype.menu?.removeAction(EDIT_ID)
-	Group.prototype.menu?.removeAction(ADD_ID)
+	for (const entry of menuEntries) Group.prototype.menu?.removeAction(entry.id)
 	if (addAction) Toolbars.outliner.remove(addAction)
 	addAction?.delete()
-	editAction?.delete()
 	addAction = undefined
-	editAction = undefined
 	dialog?.delete()
 	dialog = undefined
 }

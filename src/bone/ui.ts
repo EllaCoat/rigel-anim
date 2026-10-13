@@ -3,23 +3,27 @@ import { isRigelProject } from '../easing/keyframes'
 import { BONE_OWN_KEYS, boneNbtProblems } from '../export/display'
 import { readBoneNbt, writeBoneNbt } from './settings'
 
-const ACTION_ID = 'rigel_bone_settings'
+const MENU_ID = 'rigel_bone_settings'
 
-let action: Action | undefined
 let dialog: Dialog | undefined
-
-const selectedGroup = (): Group | undefined => {
-	const g = Group.first_selected as Group | undefined
-	return g instanceof Group ? g : undefined
-}
 
 // Only groups with cubes become entities; a display group has its own settings.
 const hasBoneSettings = (group: Group) => !readDisplay(group) && group.children.some((c) => c instanceof Cube)
 
+const menuEntry = {
+	id: MENU_ID,
+	name: 'Rigel の Bone 設定',
+	icon: 'settings',
+	condition: (group: unknown) => isRigelProject() && group instanceof Group && hasBoneSettings(group),
+	click: (group: unknown) => {
+		if (group instanceof Group) openBoneDialog(group)
+	},
+}
+
 function openBoneDialog(group: Group): void {
 	dialog?.delete()
 	dialog = new Dialog({
-		id: ACTION_ID,
+		id: MENU_ID,
 		title: `Bone「${group.name}」の設定`,
 		width: 560,
 		form: {
@@ -47,26 +51,11 @@ function openBoneDialog(group: Group): void {
 }
 
 export function registerBoneUi(): void {
-	action = new Action(ACTION_ID, {
-		name: 'Rigel の Bone 設定',
-		icon: 'settings',
-		category: 'edit',
-		condition: () => {
-			const group = isRigelProject() ? selectedGroup() : undefined
-			return !!group && hasBoneSettings(group)
-		},
-		click: () => {
-			const group = selectedGroup()
-			if (group) openBoneDialog(group)
-		},
-	})
-	Group.prototype.menu?.addAction(action)
+	Group.prototype.menu?.addAction(menuEntry)
 }
 
 export function unregisterBoneUi(): void {
-	Group.prototype.menu?.removeAction(ACTION_ID)
-	action?.delete()
-	action = undefined
+	Group.prototype.menu?.removeAction(MENU_ID)
 	dialog?.delete()
 	dialog = undefined
 }

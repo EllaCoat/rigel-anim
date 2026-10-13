@@ -21,17 +21,30 @@ export const DEFAULT_VARIANT = 'default'
 
 export const normalizeItem = normalizeId
 
-export function settingsProblems(s: RigSettings): string[] {
-	const problems: string[] = []
-	if (!RIG_NAME.test(s.rig)) problems.push('リグ名には小文字・数字・_ だけを使ってください。')
-	else if (RESERVED_RIG_NAMES.includes(s.rig)) problems.push(`リグ名 ${s.rig} は共通のデータパックが使うため、使えません（${RESERVED_RIG_NAMES.join('・')}）。`)
-	if (!ITEM.test(s.item)) problems.push('元の item は、minecraft:white_dye のような ID で入力してください。')
-	if (!Number.isInteger(s.chunkLines) || s.chunkLines < 1) problems.push('温めの 1 かたまりの行数は、1 以上の整数にしてください。')
-	if (!Number.isInteger(s.id) || s.id < 1 || s.id > 0xffffffff) problems.push('固有 ID が正しくありません（1〜4294967295 の整数ではありません）。')
-	if (s.thin && !validTolerance(s.thin)) problems.push('間引きの許容誤差は、位置・向きとも 0 以上の数にしてください。')
-	if (!Number.isInteger(s.span) || s.span < 1) problems.push('間引きの区間の上限は、1 以上の整数にしてください。')
-	if (!Number.isInteger(s.teleportDuration) || s.teleportDuration < 0 || s.teleportDuration > 59) problems.push('tp の補間は、0〜59 の整数にしてください。')
+export interface SettingsProblem {
+	field: keyof RigSettings
+	message: string
+}
+
+// draft: settings still being filled in, where an empty rig name or item is not a problem yet.
+export function settingsFieldProblems(s: RigSettings, draft = false): SettingsProblem[] {
+	const problems: SettingsProblem[] = []
+	const add = (field: keyof RigSettings, message: string) => problems.push({ field, message })
+	if (!(draft && s.rig === '')) {
+		if (!RIG_NAME.test(s.rig)) add('rig', 'リグ名には小文字・数字・_ だけを使ってください。')
+		else if (RESERVED_RIG_NAMES.includes(s.rig)) add('rig', `リグ名 ${s.rig} は共通のデータパックが使うため、使えません（${RESERVED_RIG_NAMES.join('・')}）。`)
+	}
+	if (!(draft && s.item === '') && !ITEM.test(s.item)) add('item', '元の item は、minecraft:white_dye のような ID で入力してください。')
+	if (!Number.isInteger(s.chunkLines) || s.chunkLines < 1) add('chunkLines', '温めの 1 かたまりの行数は、1 以上の整数にしてください。')
+	if (!Number.isInteger(s.id) || s.id < 1 || s.id > 0xffffffff) add('id', '固有 ID が正しくありません（1〜4294967295 の整数ではありません）。')
+	if (s.thin && !validTolerance(s.thin)) add('thin', '間引きの許容誤差は、位置・向きとも 0 以上の数にしてください。')
+	if (!Number.isInteger(s.span) || s.span < 1) add('span', '間引きの区間の上限は、1 以上の整数にしてください。')
+	if (!Number.isInteger(s.teleportDuration) || s.teleportDuration < 0 || s.teleportDuration > 59) add('teleportDuration', 'tp の補間は、0〜59 の整数にしてください。')
 	return problems
+}
+
+export function settingsProblems(s: RigSettings): string[] {
+	return settingsFieldProblems(s).map((p) => p.message)
 }
 
 // others: the names of the other variants.

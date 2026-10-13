@@ -43,7 +43,7 @@ type Bag = Record<string, unknown>
 let properties: Deletable[] = []
 
 export function registerExportSettings(): void {
-	// Edited in the export dialog only; exposed properties would also show unlabelled in the project settings.
+	// Edited in Rigel's own dialogs only; exposed properties would also show unlabelled in Blockbench's project settings.
 	const condition = { formats: [FORMAT_ID] }
 	const exposed = false
 	properties = [

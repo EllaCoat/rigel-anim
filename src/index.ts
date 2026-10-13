@@ -3,6 +3,7 @@ import { registerDisplaySettings, unregisterDisplaySettings } from './display/se
 import { registerDisplayUi, unregisterDisplayUi } from './display/ui'
 import { registerEasingKeyframes, unregisterEasingKeyframes } from './easing/keyframes'
 import { registerEasingUi, unregisterEasingUi } from './easing/ui'
+import { registerAnimationUi, unregisterAnimationUi } from './export/animation-ui'
 import { registerExportSettings, unregisterExportSettings } from './export/settings'
 import { registerExportUi, unregisterExportUi } from './export/ui'
 import { registerFontSettings, unregisterFontSettings } from './font'
@@ -35,6 +36,7 @@ BBPlugin.register(PLUGIN_ID, {
 		registerDisplaySettings()
 		registerLocatorSettings()
 		registerExportUi()
+		registerAnimationUi()
 		registerVariantKeyframes(chosenId)
 		registerVariantPanel()
 		registerVariantView(redrawVariantPanel)
@@ -53,6 +55,7 @@ BBPlugin.register(PLUGIN_ID, {
 		unregisterVariantView()
 		unregisterVariantPanel()
 		unregisterVariantKeyframes()
+		unregisterAnimationUi()
 		unregisterExportUi()
 		unregisterLocatorSettings()
 		unregisterDisplaySettings()

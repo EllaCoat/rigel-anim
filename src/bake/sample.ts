@@ -40,6 +40,14 @@ export function readLocatorPositions(locators: Locator[], out: Float64Array, off
 	})
 }
 
+export const nearestTick = (time: number): number => Math.round(time * TICKS_PER_SECOND)
+
+// The time of the tick nearest to `time`, kept within the animation when `time` is.
+export function snapToTick(time: number, length: number): number {
+	const tick = nearestTick(time) / TICKS_PER_SECOND
+	return time <= length ? Math.min(tick, length) : tick
+}
+
 // Rounded up so the last tick reaches the end of the animation (it is clamped to the length).
 export function tickCount(animation: BBAnimation): number {
 	return Math.max(0, Math.ceil(animation.length * TICKS_PER_SECOND - 1e-9))

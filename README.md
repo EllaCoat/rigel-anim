@@ -107,6 +107,22 @@ File > Preferences > Settings の Preview で、次の 2 つを設定する。
 - 読めないフォントやファイルがあると、件数と 1 件目を画面に出す。全件は開発者ツールのコンソールで確認できる。
 - `obfuscated` の文字は入れ替えずにそのまま描く。右から左へ書く文字（アラビア文字など）も並べ替えない。
 
+### Timeline の補助
+
+Animate の画面では、Timeline の上にバーが出る。
+
+| 機能 | 使い方 |
+|---|---|
+| 名前で検索 | バーの入力欄に入れた文字を名前に含む行だけを表示する。Effects の行も対象になる |
+| キーフレームのある行だけ | フィルターのボタン。Effects の行は、Variant のキーフレームがあれば残る |
+| 選んでいる行だけ | 鎖のボタン。アウトライナーで選んでいる Group とその子の行だけを表示する。Effects の行は常に表示する |
+| パンくず | 行の名前にマウスを乗せると、親からの階層（`body > arm > hand` など）を左に出す |
+| キーフレームへ移動 | Timeline を操作している間、Shift+→ と Shift+← で、選んでいる行の次・前のキーフレームの tick へ移る。Effects の行では Variant のキーフレームにも止まる |
+| A-B ループ | Alt+Shift+A と Alt+Shift+B で、再生位置に A と B を置く。ループのボタンか Alt+Shift+L で入れると、再生中に B を過ぎたら A に戻る。Alt+Shift+X で解除する。A と B はアニメごとに持ち、バーの右端に tick で出る |
+| オニオンスキン | レイヤーのボタン。選んでいる Group（中の display を含む）の前後の tick の姿勢を、前は青、後ろは橙で重ねて表示する。範囲は Animation メニューの「オニオンスキンの範囲…」で 1〜5 tick にする |
+
+[blockbench-anim-ux](https://github.com/EllaCoat/blockbench-anim-ux) を一緒に読み込んでいても、Rigel Rig のプロジェクトでは anim-ux の同じ機能は出ない（anim-ux 0.11.0 以降）。
+
 ### 書き出し（Minecraft 1.20.4）
 
 File メニューの「Export」から「Rigel のパックを書き出す」を選ぶ。開いたダイアログで次の項目を確かめて確定すると、データパックとリソースパックを書き出す。

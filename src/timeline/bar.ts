@@ -236,7 +236,7 @@ function watchRows(): void {
 	if (body === observed) return
 	observer?.disconnect()
 	observed = body
-	if (body) observer?.observe(body, { childList: true, subtree: true })
+	if (body) observer?.observe(body, { childList: true, subtree: true, attributes: true, attributeFilter: ['uuid'] })
 }
 
 function refresh(): void {
@@ -268,7 +268,9 @@ export function registerTimelineBar(): void {
 	style = Blockbench.addCSS(CSS)
 	observer = new MutationObserver(scheduleRefresh)
 	listeners = [
-		...(['select_project', 'unselect_project', 'select_mode', 'select_animation'] as const).map((name) => Blockbench.on(name, scheduleRefresh)),
+		...(['select_project', 'unselect_project', 'select_mode', 'select_animation', 'finished_edit', 'undo', 'redo'] as const).map((name) =>
+			Blockbench.on(name, scheduleRefresh),
+		),
 		// The row elements are reused for the next project, where another plugin may hide rows before this bar refreshes.
 		Blockbench.on('unselect_project', showAllRows),
 		Blockbench.on('convert_format', () => {

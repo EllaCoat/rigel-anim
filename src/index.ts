@@ -12,6 +12,11 @@ import { registerFontSettings, unregisterFontSettings } from './font'
 import { registerFormat, unregisterFormat } from './format'
 import { registerLocatorSettings, unregisterLocatorSettings } from './locator/settings'
 import { registerLocatorUi, unregisterLocatorUi } from './locator/ui'
+import { registerTimelineBar, unregisterTimelineBar } from './timeline/bar'
+import { registerBreadcrumb, unregisterBreadcrumb } from './timeline/breadcrumb'
+import { registerKeyframeJump, unregisterKeyframeJump } from './timeline/jump'
+import { registerAbLoop, unregisterAbLoop } from './timeline/loop'
+import { registerOnionSkin, unregisterOnionSkin } from './timeline/onion'
 import { registerVariantSettings, unregisterVariantSettings } from './variant/settings'
 import { registerVariantKeyframes, unregisterVariantKeyframes } from './variant/keyframes'
 import { redrawVariantPanel, registerVariantPanel, unregisterVariantPanel } from './variant/panel'
@@ -49,8 +54,18 @@ BBPlugin.register(PLUGIN_ID, {
 		registerBoneUi()
 		registerFontSettings(refreshAllDisplayPreviews)
 		registerDisplayPreview()
+		registerTimelineBar()
+		registerBreadcrumb()
+		registerKeyframeJump()
+		registerAbLoop()
+		registerOnionSkin()
 	},
 	onunload() {
+		unregisterOnionSkin()
+		unregisterAbLoop()
+		unregisterKeyframeJump()
+		unregisterBreadcrumb()
+		unregisterTimelineBar()
 		unregisterDisplayPreview()
 		unregisterFontSettings()
 		unregisterBoneUi()

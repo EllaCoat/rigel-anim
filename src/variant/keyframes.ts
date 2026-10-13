@@ -1,5 +1,5 @@
 import { isRigelProject } from '../easing/keyframes'
-import { TICKS_PER_SECOND } from '../bake/sample'
+import { nearestTick, snapToTick } from '../bake/sample'
 import type { TimedVariant } from './keys'
 import { DEFAULT_VARIANT_ID } from './settings'
 import { vue } from './vue'
@@ -55,9 +55,8 @@ export function placeVariantKeyframe(variant: string): void {
 	if (!animation) return
 	const effects = effectsOf(animation) ?? ((animation.animators as unknown as Record<string, unknown>).effects = new EffectAnimator(animation)) as unknown as Effects
 	effects.addToTimeline()
-	const tick = Math.round(Timeline.time * TICKS_PER_SECOND)
-	const time = Timeline.time <= animation.length ? Math.min(tick / TICKS_PER_SECOND, animation.length) : tick / TICKS_PER_SECOND
-	const there = (effects.variant ?? []).filter((kf) => Math.round(kf.time * TICKS_PER_SECOND) === Math.round(time * TICKS_PER_SECOND))
+	const time = snapToTick(Timeline.time, animation.length)
+	const there = (effects.variant ?? []).filter((kf) => nearestTick(kf.time) === nearestTick(time))
 	if (there.length > 0) {
 		const changing = notShowing(there, variant)
 		if (changing.length > 0) setKeyframeVariants(changing, variant)

@@ -6,7 +6,7 @@ import { readDisplay } from './settings'
 
 // Blockbench's three.js; the types declare it as a UMD global, which modules cannot use as a value.
 const three = (globalThis as unknown as { THREE: typeof import('three') }).THREE
-const PREVIEW = 'rigel_display_preview'
+export const PREVIEW = 'rigel_display_preview'
 // Blockbench pixels per text pixel: a text_display draws one text pixel 0.025 blocks wide.
 const TEXT_PIXEL = 0.025 * 16
 
@@ -16,6 +16,13 @@ let listeners: Deletable[] = []
 // Text previews resolve later; a newer refresh of the same group wins.
 const pending = new WeakMap<Group, number>()
 let serial = 0
+const drawnListeners = new Set<() => void>()
+
+// Called when a text preview has its plane, which comes after the font has loaded.
+export function onTextPreviewDrawn(listener: () => void): () => void {
+	drawnListeners.add(listener)
+	return () => drawnListeners.delete(listener)
+}
 
 interface TextImage {
 	canvas: HTMLCanvasElement
@@ -150,6 +157,7 @@ function textPreview(group: Group, display: Extract<DisplaySettings, { kind: 'te
 		const plane = texturedPlane(image.canvas, (right - left) * TEXT_PIXEL, (bottom - top) * TEXT_PIXEL, three.FrontSide)
 		plane.position.set(((left + right) / 2 + 1 - image.width / 2) * TEXT_PIXEL, (image.height - (top + bottom) / 2) * TEXT_PIXEL, 0)
 		root.add(plane)
+		for (const listener of drawnListeners) listener()
 	})
 }
 

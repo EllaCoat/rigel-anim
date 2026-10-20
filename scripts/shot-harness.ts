@@ -1,14 +1,12 @@
 // Runs inside the development Blockbench: mc-shot.ts bundles this file and injects it as __rigelShot.
-import { tickCount } from '../src/bake/sample'
+import { poseAnimation, tickCount } from '../src/bake/sample'
 import { variantKeys } from '../src/export/collect'
 import { variantCalls } from '../src/export/variant-keys'
 import { readVariants } from '../src/variant/settings'
 import { blockbenchCamera, FOV, type Pose, type View } from './shot-spec'
 import { callVariant, ORIGINAL, viewCalls, type Worn } from './shot-variants'
 
-const TICKS_PER_SECOND = 20
 let worn: Worn = new Map()
-type Stackable = { stackAnimations(animations: BBAnimation[], inLoop: boolean): void }
 
 async function open(model: any, name: string) {
 	const format = model.meta?.model_format
@@ -50,11 +48,9 @@ function applyPose(pose: Pose | undefined): void {
 		Animator.showDefaultPose()
 		return
 	}
-	Animator.showDefaultPose(true)
 	const animation = Project!.animations.find((a) => a.name === pose.animation)
 	if (!animation) throw new Error(`no animation "${pose.animation}"`)
-	Timeline.time = Math.min(pose.tick / TICKS_PER_SECOND, animation.length)
-	;(Animator as unknown as Stackable).stackAnimations([animation], false)
+	poseAnimation(animation, pose.tick)
 }
 
 function applyVariants(view: View): void {

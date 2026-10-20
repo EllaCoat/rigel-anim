@@ -2,6 +2,7 @@ import { onTextPreviewDrawn, PREVIEW as DISPLAY_PREVIEW } from '../display/previ
 import { isRigelProject } from '../easing/keyframes'
 import { barState, onToggle } from './bar'
 import { clampOnionRange, DEFAULT_ONION_RANGE, MAX_ONION_RANGE, MIN_ONION_RANGE, onionFade, onionFrames, storedOnionRange, type OnionFrame } from './ticks'
+import { keepTransforms } from './transforms'
 
 // Blockbench's three.js; the types declare it as a UMD global, which modules cannot use as a value.
 const three = (globalThis as unknown as { THREE: typeof import('three') }).THREE
@@ -125,6 +126,7 @@ function rebuild(): void {
 	if (sources.length === 0) return clearGhosts()
 	busy = true
 	const now = Timeline.time
+	const restoreShown = keepTransforms([...Group.all, ...Outliner.elements].flatMap((node) => (node as unknown as { mesh?: THREE.Object3D }).mesh ?? []))
 	try {
 		const next = `${chosen.group.uuid}|${range}|${sources.map((source) => source.uuid).join(',')}`
 		if (next !== signature) {
@@ -147,6 +149,8 @@ function rebuild(): void {
 		clearGhosts()
 	} finally {
 		showPose(now, BBAnimation.all.filter((animation) => animation.playing))
+		restoreShown()
+		Canvas.scene.updateMatrixWorld()
 		busy = false
 	}
 }

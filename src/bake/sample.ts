@@ -53,7 +53,19 @@ export function tickCount(animation: BBAnimation): number {
 	return Math.max(0, Math.ceil(animation.length * TICKS_PER_SECOND - 1e-9))
 }
 
-// Each tick's pose comes from the same calls the preview makes for one animation.
+// Dispatched with { animation, tick } once the export has posed a tick, before it reads the bones. Other plugins
+// (spring bone) change the pose here, leave the world matrices updated, and throw to stop the export.
+export const EXPORT_POSE_EVENT = 'rigel_export_pose'
+
+// The pose the export reads at a tick: the calls the preview makes for one animation, then other plugins' changes.
+export function poseAnimation(animation: BBAnimation, tick: number): void {
+	// A 'once' animation shows the rest pose past its length, so the last tick is clamped to it.
+	Timeline.time = Math.min(tick / TICKS_PER_SECOND, animation.length)
+	Animator.showDefaultPose(true)
+	;(Animator as unknown as Stackable).stackAnimations([animation], false)
+	;(Blockbench as unknown as { dispatchEvent(name: string, data: object): void }).dispatchEvent(EXPORT_POSE_EVENT, { animation, tick })
+}
+
 export function sampleAnimation(animation: BBAnimation, bones: Group[], locators: Locator[]): { matrices: Float64Array; locators: Float64Array } {
 	const ticks = tickCount(animation)
 	const matrices = new Float64Array((ticks + 1) * bones.length * 16)
@@ -61,10 +73,7 @@ export function sampleAnimation(animation: BBAnimation, bones: Group[], locators
 	const time = Timeline.time
 	try {
 		for (let i = 0; i <= ticks; i++) {
-			// A 'once' animation shows the rest pose past its length, so the last tick is clamped to it.
-			Timeline.time = Math.min(i / TICKS_PER_SECOND, animation.length)
-			Animator.showDefaultPose(true)
-			;(Animator as unknown as Stackable).stackAnimations([animation], false)
+			poseAnimation(animation, i)
 			readBoneMatrices(bones, matrices, i * bones.length * 16)
 			readLocatorPositions(locators, positions, i * locators.length * 3)
 		}

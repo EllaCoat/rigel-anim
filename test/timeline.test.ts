@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import { nearestTick, snapToTick } from '../src/bake/sample'
 import { rowVisible, type RowFacts, type RowFilter } from '../src/timeline/rows'
 import { clampOnionRange, DEFAULT_ONION_RANGE, jumpTarget, loopBack, loopLabel, onionFade, onionFrames, storedOnionRange } from '../src/timeline/ticks'
+import { keepTransforms } from '../src/timeline/transforms'
 
 const row = (facts: Partial<RowFacts> = {}): RowFacts => ({ name: 'Left Arm', hasKeyframes: true, selected: false, effects: false, ...facts })
 const filter = (rest: Partial<RowFilter> = {}): RowFilter => ({ query: '', keyframesOnly: false, onlySelected: false, ...rest })
@@ -154,5 +155,31 @@ describe('onion skin', () => {
 		expect(storedOnionRange(null)).toBe(DEFAULT_ONION_RANGE)
 		expect(storedOnionRange('')).toBe(DEFAULT_ONION_RANGE)
 		expect(storedOnionRange('NaN')).toBe(DEFAULT_ONION_RANGE)
+	})
+})
+
+describe('onion skin', () => {
+	// A vector that clones and copies like three.js's.
+	class Vec {
+		constructor(public v: number[]) {}
+		clone() {
+			return new Vec([...this.v])
+		}
+		copy(other: Vec) {
+			this.v = [...other.v]
+			return this
+		}
+	}
+	const placed = (n: number) => ({ position: new Vec([n, 0, 0]), quaternion: new Vec([0, 0, 0, 1]), scale: new Vec([1, 1, 1]) })
+
+	test('after posing the other ticks and the playhead again, the bones get back the pose another plugin had put on them', () => {
+		const tail = placed(1)
+		tail.quaternion.v = [0.1, 0, 0, 0.995]
+		const restore = keepTransforms([tail] as never)
+		tail.position.v = [9, 9, 9]
+		tail.quaternion.v = [0, 0, 0, 1]
+		tail.scale.v = [2, 2, 2]
+		restore()
+		expect([tail.position.v, tail.quaternion.v, tail.scale.v]).toEqual([[1, 0, 0], [0.1, 0, 0, 0.995], [1, 1, 1]])
 	})
 })

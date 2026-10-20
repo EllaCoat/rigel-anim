@@ -109,6 +109,23 @@ function showPose(time: number, animations: BBAnimation[]): void {
 	animator.displayMeshDeformation()
 }
 
+// Other plugins change the pose after Blockbench has posed the rig (spring bone does on display_animation_frame), and
+// posing the playhead again would undo that. Returns a function that puts back the transforms shown now.
+function keepShownPose(): () => void {
+	const shown = [...Group.all, ...Outliner.elements].flatMap((node) => {
+		const mesh = (node as unknown as { mesh?: THREE.Object3D }).mesh
+		return mesh ? [{ mesh, position: mesh.position.clone(), quaternion: mesh.quaternion.clone(), scale: mesh.scale.clone() }] : []
+	})
+	return () => {
+		for (const { mesh, position, quaternion, scale } of shown) {
+			mesh.position.copy(position)
+			mesh.quaternion.copy(quaternion)
+			mesh.scale.copy(scale)
+		}
+		Canvas.scene.updateMatrixWorld()
+	}
+}
+
 function target(): { animation: BBAnimation; group: Group } | undefined {
 	if (!barState.onionSkin || !isRigelProject() || !Modes.animate) return undefined
 	const animation = BBAnimation.selected
@@ -125,6 +142,7 @@ function rebuild(): void {
 	if (sources.length === 0) return clearGhosts()
 	busy = true
 	const now = Timeline.time
+	const restoreShown = keepShownPose()
 	try {
 		const next = `${chosen.group.uuid}|${range}|${sources.map((source) => source.uuid).join(',')}`
 		if (next !== signature) {
@@ -146,7 +164,9 @@ function rebuild(): void {
 		console.warn('Rigel: could not build the onion skin', error)
 		clearGhosts()
 	} finally {
+		// Posing the playhead again also brings back the effects (variants, particles) of the time shown.
 		showPose(now, BBAnimation.all.filter((animation) => animation.playing))
+		restoreShown()
 		busy = false
 	}
 }

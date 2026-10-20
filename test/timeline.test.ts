@@ -159,7 +159,6 @@ describe('onion skin', () => {
 })
 
 describe('onion skin', () => {
-	// A vector that clones and copies like three.js's.
 	class Vec {
 		constructor(public v: number[]) {}
 		clone() {

@@ -4,7 +4,7 @@
 	"private": true,
 	"description": "Blockbench plugin: export display-entity animations for Minecraft Java Edition 1.20.4 and 26.3.",
 	"type": "module",
-	"packageManager": "bun@1.4.2",
+	"packageManager": "bun@1.4.3",
 	"scripts": {
 		"build": "bun build src/index.ts --format=iife --target=browser --outfile=dist/rigel.js",
 		"test": "bun scripts/test.ts",

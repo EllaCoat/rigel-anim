@@ -11,7 +11,7 @@ Blockbench で作ったモデルとアニメーションを、Minecraft Java Edi
 
 配布用のファイルはまだ無いので、ソースからビルドして読み込む。
 
-1. [bun](https://bun.com) 1.4.2 で `bun install --frozen-lockfile` と `bun run build` を実行し、`dist/rigel.js` を作る。
+1. [bun](https://bun.com) 1.4.3 で `bun install --frozen-lockfile` と `bun run build` を実行し、`dist/rigel.js` を作る。
 2. Blockbench の File メニューから「Plugins...」を開き、ダイアログ上部の「Load Plugin from File」を押して `dist/rigel.js` を選ぶ。
 
 ## 使い方

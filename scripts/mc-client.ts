@@ -146,14 +146,17 @@ const user32 = dlopen('user32.dll', {
 	GetWindowThreadProcessId: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.u32 },
 	PostMessageW: { args: [FFIType.ptr, FFIType.u32, FFIType.u64, FFIType.i64], returns: FFIType.i32 },
 })
-const GLFW_CLASS = Buffer.from('GLFW30\0', 'utf16le')
+// The window classes of the window libraries the clients use: GLFW for 1.20.4, SDL 3 for 26.3.
+const WINDOW_CLASSES = ['GLFW30', 'SDL_app'].map((name) => Buffer.from(`${name}\0`, 'utf16le'))
 
 function findWindow(pid: number) {
 	const owner = new Uint32Array(1)
-	let hwnd = null
-	while ((hwnd = user32.symbols.FindWindowExW(null, hwnd, ptr(GLFW_CLASS), null))) {
-		user32.symbols.GetWindowThreadProcessId(hwnd, ptr(owner))
-		if (owner[0] === pid) return hwnd
+	for (const windowClass of WINDOW_CLASSES) {
+		let hwnd = null
+		while ((hwnd = user32.symbols.FindWindowExW(null, hwnd, ptr(windowClass), null))) {
+			user32.symbols.GetWindowThreadProcessId(hwnd, ptr(owner))
+			if (owner[0] === pid) return hwnd
+		}
 	}
 	return null
 }
@@ -196,8 +199,10 @@ export class Client {
 		])
 	}
 
-	// GLFW reads key messages from its queue whether or not the window has focus, so posting them needs
-	// neither the foreground nor a real keyboard.
+	// GLFW (1.20.4) reads key messages from its queue whether or not the window has focus, so posting them needs
+	// neither the foreground nor a real keyboard. SDL 3 (26.3) tags key events with the window that has keyboard
+	// focus, and the client drops events without a window (KeyboardHandler.keyPress), so 26.3 takes the keys only
+	// while its window is in the foreground.
 	async press(key: { vk: number; scancode: number }): Promise<void> {
 		this.window ??= findWindow(this.proc.pid!)
 		if (!this.window) throw new Error('the client window was not found')

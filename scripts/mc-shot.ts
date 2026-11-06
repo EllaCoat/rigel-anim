@@ -6,7 +6,8 @@
 // The server loads a world of its own, made anew for every run, so nothing placed for a screenshot reaches
 // the benchmark world. Results go to .shots/<spec>-<time>/: <view>-mc.png per view and, when the spec names
 // a model, <view>-bb.png (Blockbench) and <view>-compare.png (Minecraft | Blockbench | both overlaid).
-// The client window opens on the desktop while it runs; nothing needs the mouse or the keyboard.
+// The client window opens on the desktop while it runs; nothing needs the mouse or the keyboard. The 26.3 client
+// takes the keys only while its window is in the foreground (Client.press in mc-client.ts).
 import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { basename, dirname, join, resolve } from 'node:path'
 import { SERVER_DIR, Server } from '../bench/mc'
@@ -52,8 +53,8 @@ async function shoot(spec: Spec, specDir: string, out: string, poses: string[][]
 
 		const joined = server.waitFor(new RegExp(`\\b${PLAYER} joined the game`), 180_000).then(() => true, () => false)
 		client = Client.launch({ server: '127.0.0.1:25565', width: WIDTH, height: HEIGHT, resourcePacks })
-		const inGame = await Promise.race([joined, client.output.exited.then(() => false)])
-		if (!inGame) throw new Error(`the client did not join the server; see ${join(out, 'client.log')}`)
+		const inGame = await Promise.race([joined, client.output.exited.then((code) => `exited (${code})`)])
+		if (inGame !== true) throw new Error(`the client did not join the server${inGame ? `: it ${inGame}` : ''}; see ${join(out, 'client.log')}`)
 
 		server.send(`gamemode spectator ${PLAYER}`)
 		const from = server.log.length

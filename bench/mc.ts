@@ -23,6 +23,8 @@ const HEAP = process.env.RIGEL_BENCH_HEAP ?? '4G'
 const PROPERTIES = {
 	'server-ip': '127.0.0.1',
 	'online-mode': 'false',
+	// 26.3 turns the whitelist on by default, which keeps the screenshot client out.
+	'white-list': 'false',
 	'level-type': 'minecraft\\:flat',
 	'generate-structures': 'false',
 	difficulty: 'peaceful',

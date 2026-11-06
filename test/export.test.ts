@@ -10,6 +10,7 @@ import { commonPack, MARKER, rigPack, uuidString, type RigPackInput } from '../s
 import { formatFloat, planChunks, planEntries, planFrames, poseString } from '../src/export/frames'
 import { boneScale, itemModel } from '../src/export/item-model'
 import { mergeItemModel } from '../src/export/resource-pack'
+import { targetOf } from '../src/export/target'
 import type { AnimationSource, BoneSource, Files, Loop, RigSettings, RigSource, TextureSource, WarmPriority } from '../src/export/types'
 import { ExportConflict, exportRig, type ExportFs } from '../src/export/write'
 
@@ -19,6 +20,7 @@ const text = (files: Files, path: string) => {
 	return content
 }
 const lines = (files: Files, path: string) => text(files, path).trimEnd().split('\n')
+const V1 = targetOf('1.20.4')
 
 function axisAngle(axis: Vec3, degrees: number): Quat {
 	const n = Math.hypot(...axis)
@@ -79,7 +81,7 @@ describe('item model and entity matrix', () => {
 		test(`a drawn corner lands where Blockbench draws it (${label})`, () => {
 			const b = bone([cube(from, to)])
 			const errors: string[] = []
-			const { json, scale } = itemModel(b, [TEXTURE], () => 'rigel:t/skin', errors)
+			const { json, scale } = itemModel(b, [TEXTURE], () => 'rigel:t/skin', V1, errors)
 			expect(errors).toEqual([])
 			const element = (json as { elements: { from: Vec3; to: Vec3 }[] }).elements[0]!
 			for (const v of [...element.from, ...element.to]) expect(Math.abs(v - 8)).toBeLessThanOrEqual(24 + 1e-9)
@@ -106,6 +108,7 @@ describe('item model and entity matrix', () => {
 			bone([cube([0, 0, 0], [1, 1, 1], { rotation: [0, 30, 0] }), cube([0, 0, 0], [1, 1, 1], { name: 'two', rotation: [22.5, 22.5, 0] })]),
 			[TEXTURE],
 			() => 'rigel:t/skin',
+			V1,
 			errors,
 		)
 		expect(errors.length).toBe(2)
@@ -177,7 +180,9 @@ describe('data pack', () => {
 	})
 	const bone = (cmd: number, rest: string) => ({ nbt: `id:"minecraft:item_display",item:{id:"minecraft:white_dye",Count:1b,tag:{CustomModelData:${cmd}}}`, rest })
 	const input = (overrides: Partial<RigPackInput> = {}): RigPackInput => ({
+		target: V1,
 		rig: 'axia',
+		item: 'minecraft:white_dye',
 		id: 0x1a2b3c4d,
 		chunkLines: 3,
 		teleportDuration: 1,
@@ -262,7 +267,7 @@ describe('data pack', () => {
 
 	test('both packs write the marker before anything else', () => {
 		expect([...files.keys()][0]).toBe(MARKER)
-		expect([...commonPack().keys()][0]).toBe(MARKER)
+		expect([...commonPack(V1).keys()][0]).toBe(MARKER)
 	})
 
 	test('negative IDs keep the hex form', () => {
@@ -343,8 +348,8 @@ describe('data pack', () => {
 		const runs = (b: number) => ({ ends: b === 1 ? [0, 3] : [0, 1, 2, 3], snaps: [] })
 		const thinIdle = { ...animation('idle', 'hold', 'high', poses), frames: planFrames('hold', poses, runs), entries: planEntries('hold', poses, runs), variants: new Map([[0, 'dark'], [2, 'lit']]) }
 		const variants = [
-			{ name: 'dark', writes: [{ passenger: 0, cmd: 7 }], onApply: '' },
-			{ name: 'lit', writes: [{ passenger: 0, cmd: 8 }], onApply: 'my:lit' },
+			{ name: 'dark', writes: [{ passenger: 0, model: '7' }], onApply: '' },
+			{ name: 'lit', writes: [{ passenger: 0, model: '8' }], onApply: 'my:lit' },
 		]
 		const tweened = rigPack(input({ variants, animations: [thinIdle, animation('walk', 'loop', 'high', [['c', 'd'], ['C', 'd'], ['c', 'D']])] }))
 		const merge = (n: number, head: string, values: string) => `$data merge entity 1a2b3c4d-0-0-0-${n} {${head}transformation:[${values}$(_)`
@@ -431,7 +436,7 @@ describe('data pack', () => {
 	})
 
 	test('the common pack drops a registration whose chunk cannot be called', () => {
-		const common = commonPack()
+		const common = commonPack(V1)
 		expect(lines(common, 'data/rigel/functions/core/warm/high.mcfunction')).toEqual([
 			'scoreboard players set $Rigel.Done Rigel.Temp 0',
 			'execute store result score $Rigel.Done Rigel.Temp run function rigel:core/warm/call with storage rigel:warm High[0]',
@@ -481,7 +486,7 @@ describe('resource pack', () => {
 })
 
 describe('settings', () => {
-	const settings = (s: Partial<RigSettings>): RigSettings => ({ rig: 'axia', id: 1, item: 'minecraft:white_dye', chunkLines: 500, span: 20, teleportDuration: 1, ...s })
+	const settings = (s: Partial<RigSettings>): RigSettings => ({ version: '1.20.4', rig: 'axia', id: 1, item: 'minecraft:white_dye', chunkLines: 500, span: 20, teleportDuration: 1, ...s })
 	test('reserved and malformed values are reported', () => {
 		expect(settingsProblems(settings({}))).toEqual([])
 		for (const rig of ['core', 'const', 'warm', 'rigel', 'Upper', 'a-b', '']) expect(settingsProblems(settings({ rig })).length).toBe(1)
@@ -535,13 +540,12 @@ function source(): RigSource {
 }
 
 describe('export', () => {
-	const settings: RigSettings = { rig: 'axia', id: 0x1a2b3c4d, item: 'minecraft:white_dye', chunkLines: 500, span: 20, teleportDuration: 1 }
+	const settings: RigSettings = { version: '1.20.4', rig: 'axia', id: 0x1a2b3c4d, item: 'minecraft:white_dye', chunkLines: 500, span: 20, teleportDuration: 1 }
 
 	test('matrices become the values written each frame', () => {
 		const result = buildExport(source(), settings, undefined)
 		expect(text(result.rigPack, 'data/rigel/functions/axia/frames/0/1.mcfunction')).toContain('{transformation:[-1f,0f,0f,0f,0f,1f,0f,.5f,0f,0f,-1f,0f$(_)')
-		expect([...result.resources.keys()]).toEqual(['assets/rigel/models/axia/body.json', 'assets/rigel/textures/item/axia/skin.png'])
-		expect(result.itemModel.path).toBe('assets/minecraft/models/item/white_dye.json')
+		expect([...result.resources.keys()]).toEqual(['assets/rigel/models/axia/body.json', 'assets/rigel/textures/item/axia/skin.png', 'assets/minecraft/models/item/white_dye.json'])
 	})
 
 	test('problems are collected before anything is built', () => {
@@ -572,6 +576,54 @@ describe('export', () => {
 				{ predicate: { custom_model_data: 1 }, model: 'rigel:axia/body' },
 				{ predicate: { custom_model_data: 2 }, model: 'rigel:beta/body' },
 			])
+		} finally {
+			rmSync(root, { recursive: true, force: true })
+		}
+	})
+
+	test('26.3 writes item definitions and 26.3 data pack formats, and leaves the item model alone', async () => {
+		const root = mkdtempSync(join(tmpdir(), 'rigel-export-'))
+		try {
+			const v26 = { ...settings, version: '26.3' as const }
+			await exportRig(target(root), source(), v26)
+			expect(existsSync(join(root, 'datapacks/axia/data/rigel/function/axia/spawn.mcfunction'))).toBe(true)
+			expect(existsSync(join(root, 'datapacks/rigel/data/rigel/function/core/tick.mcfunction'))).toBe(true)
+			expect(JSON.parse(readFileSync(join(root, 'datapacks/axia/pack.mcmeta'), 'utf8')).pack.min_format).toBe(121)
+			expect(JSON.parse(readFileSync(join(root, 'resources/assets/rigel/items/axia/body.json'), 'utf8'))).toEqual({ model: { type: 'minecraft:model', model: 'rigel:axia/body' } })
+			expect(existsSync(join(root, 'resources/assets/minecraft'))).toBe(false)
+			// The rig's item definitions are replaced like its models.
+			writeFileSync(join(root, 'resources/assets/rigel/items/axia/old.json'), '{}')
+			await exportRig(target(root), source(), v26)
+			expect(existsSync(join(root, 'resources/assets/rigel/items/axia/old.json'))).toBe(false)
+		} finally {
+			rmSync(root, { recursive: true, force: true })
+		}
+	})
+
+	test("the resource pack's pack.mcmeta serves 1.20.4 and 26.3 whichever exports first, and Rigel's 1.20.4-only one gives way", async () => {
+		const both = { pack_format: 22, supported_formats: [22, 97], min_format: 22, max_format: 97, description: 'rigel' }
+		const meta = (root: string) => join(root, 'resources/pack.mcmeta')
+		for (const [first, then] of [['26.3', '1.20.4'], ['1.20.4', '26.3']] as const) {
+			const root = mkdtempSync(join(tmpdir(), 'rigel-export-'))
+			try {
+				await exportRig(target(root), source(), { ...settings, version: first })
+				expect(JSON.parse(readFileSync(meta(root), 'utf8')).pack).toEqual(both)
+				await exportRig(target(root), source(), { ...settings, version: then })
+				expect(JSON.parse(readFileSync(meta(root), 'utf8')).pack).toEqual(both)
+			} finally {
+				rmSync(root, { recursive: true, force: true })
+			}
+		}
+		const root = mkdtempSync(join(tmpdir(), 'rigel-export-'))
+		try {
+			mkdirSync(join(root, 'resources'), { recursive: true })
+			writeFileSync(meta(root), '{\n\t"pack": {\n\t\t"pack_format": 22,\n\t\t"description": "rigel"\n\t}\n}\n')
+			await exportRig(target(root), source(), { ...settings, version: '26.3' })
+			expect(JSON.parse(readFileSync(meta(root), 'utf8')).pack).toEqual(both)
+			const mine = '{"pack":{"pack_format":22,"description":"mine"}}'
+			writeFileSync(meta(root), mine)
+			await exportRig(target(root), source(), { ...settings, version: '26.3' })
+			expect(readFileSync(meta(root), 'utf8')).toBe(mine)
 		} finally {
 			rmSync(root, { recursive: true, force: true })
 		}

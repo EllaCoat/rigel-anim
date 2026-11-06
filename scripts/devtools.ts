@@ -1,13 +1,17 @@
 // DevTools client for the development Blockbench started by dev-bb.ts.
-import { cpSync, mkdirSync, rmSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, rmSync } from 'node:fs'
 import { basename, join } from 'node:path'
+import { MC_VERSION, ROOT } from '../bench/mc'
 
 export const PORT = Number(process.env.BB_DEV_PORT ?? 9467)
 export const BB_VERSION = '5.2.1'
 export const DEV_ROOT = process.env.BB_DEV_ROOT ?? join(process.env.LOCALAPPDATA ?? '', 'rigel-anim', `blockbench-${BB_VERSION}`)
 // The folders the plugin reads text_display fonts from in the development Blockbench. dev-bb.ts grants both
 // before launch; any other folder would open a permission dialog that blocks Blockbench until someone answers it.
-export const MINECRAFT_DIR = join(process.env.APPDATA ?? '', '.minecraft')
+// Fonts come from the player's .minecraft when it has the version of bench/target.ts, else from the benchmark
+// client that mc-shot.ts setup lays out like it.
+const PLAYER_MINECRAFT = join(process.env.APPDATA ?? '', '.minecraft')
+export const MINECRAFT_DIR = existsSync(join(PLAYER_MINECRAFT, 'versions', MC_VERSION, `${MC_VERSION}.jar`)) ? PLAYER_MINECRAFT : join(ROOT, `client-${MC_VERSION}`, 'minecraft')
 export const FONT_PACKS = join(DEV_ROOT, 'font-packs')
 
 async function target(): Promise<string> {

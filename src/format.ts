@@ -1,8 +1,18 @@
+import type { GameVersion } from './export/target'
+
 export const FORMAT_ID = 'rigel'
 
 let format: ModelFormat | undefined
 
-// rotation_limit and rotation_snap: cubes follow 1.20.4's item-model rules, the stricter of the two targets.
+// Cubes follow the item-model rules of the project's version: 1.20.4 turns one axis by 22.5° steps, 26.3 any way.
+// The format is shared by every Rigel project, so this runs again whenever the project or its version changes.
+export function applyVersion(version: GameVersion): void {
+	if (!format) return
+	const limited = version === '1.20.4'
+	format.rotation_limit = limited
+	format.rotation_snap = limited
+}
+
 export function registerFormat(): void {
 	format = new ModelFormat(FORMAT_ID, {
 		icon: 'movie',

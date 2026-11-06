@@ -39,11 +39,15 @@ describe('parseSpec', () => {
 describe('poses', () => {
 	const spec = parseSpec({ origin: [0, 0, 0], rig: 'axia', model: 'rig.bbmodel', views: [view, { ...view, name: 'walk', pose: { animation: 'walk', tick: 2 } }, { ...view, name: 'late', pose: { animation: 'walk', tick: 99 } }] })
 	const animations = [{ name: 'idle', length: 1 }, { name: 'walk', length: 0.12 }]
-	const frame = (f: number) => `function rigel:axia/frames/1/${f} with storage rigel:const FrameArgs`
+	const frame = (f: number) => `function rigel:axia/frames/1/${f} with storage ${f === 0 ? 'rigel:axia' : 'rigel:const FrameArgs'}`
 
 	test('a view with a pose calls the frames up to its tick, and one without returns to the rest pose', () => {
 		expect(poseCommands(spec, animations, spec.views[0]!)).toEqual(['function rigel:axia/rest'])
 		expect(poseCommands(spec, animations, spec.views[1]!)).toEqual([frame(0), frame(1), frame(2)])
+	})
+
+	test("frame 0 of a still pose is called with the rig's storage, which holds its argument", () => {
+		expect(poseCommands(spec, animations, spec.views[1]!)[0]).toBe('function rigel:axia/frames/1/0 with storage rigel:axia')
 	})
 
 	test('a view with a variant applies it before the pose and its own commands', () => {

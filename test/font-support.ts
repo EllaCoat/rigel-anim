@@ -1,6 +1,7 @@
 // Builds small Minecraft installations in memory: a jar, an asset index, resource packs and options.txt.
 import { deflateRawSync } from 'node:zlib'
 import { layoutTextDisplay, type TextDisplaySpec, type TextLayout } from '../src/font/layout'
+import type { GameVersion } from '../src/export/target'
 import { loadFontLibrary, type FontLibrary } from '../src/font/library'
 import type { DecodedImage } from '../src/font/providers'
 import type { ReadFs } from '../src/font/resources'
@@ -117,6 +118,8 @@ export function hexGlyph(codepoint: number, width: number, rows: Record<number, 
 }
 
 export interface Game {
+	/** The version whose jar and font rules are used; 1.20.4 when absent. */
+	version?: GameVersion
 	/** Under `assets/` in the jar. */
 	jar?: Files
 	/** Keys of the asset index, like `minecraft/lang/ja_jp.json`. */
@@ -129,9 +132,10 @@ export interface Game {
 export const MINECRAFT_DIR = '/home/.minecraft'
 
 export function installation(game: Game): { fs: ReadFs; resourcePacks: string[] } {
+	const version = game.version ?? '1.20.4'
 	const files: Files = {
-		[`${MINECRAFT_DIR}/versions/1.20.4/1.20.4.json`]: JSON.stringify({ assetIndex: { id: '12' } }),
-		[`${MINECRAFT_DIR}/versions/1.20.4/1.20.4.jar`]: zipOf(Object.fromEntries(Object.entries(game.jar ?? {}).map(([path, content]) => [`assets/${path}`, content]))),
+		[`${MINECRAFT_DIR}/versions/${version}/${version}.json`]: JSON.stringify({ assetIndex: { id: '12' } }),
+		[`${MINECRAFT_DIR}/versions/${version}/${version}.jar`]: zipOf(Object.fromEntries(Object.entries(game.jar ?? {}).map(([path, content]) => [`assets/${path}`, content]))),
 	}
 	const objects: Record<string, { hash: string }> = {}
 	Object.entries(game.index ?? {}).forEach(([path, content], i) => {
@@ -150,7 +154,7 @@ export function installation(game: Game): { fs: ReadFs; resourcePacks: string[] 
 
 export async function loadGame(game: Game, resourcePacks?: string[]): Promise<FontLibrary> {
 	const { fs, resourcePacks: packs } = installation(game)
-	const result = await loadFontLibrary({ fs, sources: { minecraftDir: MINECRAFT_DIR, resourcePacks: resourcePacks ?? packs }, decodeImage })
+	const result = await loadFontLibrary({ fs, sources: { minecraftDir: MINECRAFT_DIR, resourcePacks: resourcePacks ?? packs }, decodeImage, version: game.version ?? '1.20.4' })
 	if ('error' in result) throw new Error(result.error)
 	return result.library
 }

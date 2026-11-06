@@ -37,7 +37,7 @@ interface Bounds {
  * every glyph with its bold copy, shadow and lines.
  */
 function drawnBounds(layout: TextLayout): Bounds {
-	const bounds = { left: -1, top: -1, right: layout.width, bottom: layout.height }
+	const bounds = { left: -1, top: -1, right: layout.width, bottom: Math.max(layout.height, 0) }
 	const add = (u0: number, v0: number, u1: number, v1: number) => {
 		bounds.left = Math.min(bounds.left, u0, u1)
 		bounds.top = Math.min(bounds.top, v0, v1)
@@ -210,7 +210,7 @@ function crop(surface: Surface, layout: TextLayout): Raster {
 	let x0 = (-1 - bounds.left) * scale
 	let y0 = (-1 - bounds.top) * scale
 	let x1 = (layout.width - bounds.left) * scale
-	let y1 = (layout.height - bounds.top) * scale
+	let y1 = (Math.max(layout.height, 0) - bounds.top) * scale
 	for (let row = 0; row < surface.height; row++) {
 		for (let column = 0; column < width; column++) {
 			if (data[(row * width + column) * 4 + 3] === 0) continue

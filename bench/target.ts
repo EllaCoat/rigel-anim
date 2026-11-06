@@ -45,6 +45,19 @@ const TARGETS: Record<string, Target> = {
 		keepLoaded: ['forceload add -32 -64 31 15'],
 		obfuscated: false,
 	},
+	'26.3': {
+		version: '26.3',
+		javaMajor: 25,
+		packMeta: { pack: { min_format: 121, max_format: 121, description: 'rigel-anim benchmark' } },
+		functions: 'function',
+		item: ({ model, name }) => {
+			const components = [model ? '"minecraft:custom_model_data":{floats:[1f]}' : '', name ? `"minecraft:custom_name":"${name}"` : ''].filter(Boolean).join(',')
+			return `{id:"minecraft:stone",count:1${components ? `,components:{${components}}` : ''}}`
+		},
+		quietRules: ['advance_time false', 'advance_weather false', 'random_tick_speed 0', 'spawn_mobs false'],
+		keepLoaded: ['forceload add -32 -64 31 15'],
+		obfuscated: false,
+	},
 }
 
 const requested = process.env.RIGEL_BENCH_MC ?? '1.20.4'

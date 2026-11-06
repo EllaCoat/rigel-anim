@@ -1,11 +1,10 @@
 import type { Vec3 } from '../bake/matrix'
+import type { Target } from './target'
 import { DIRECTIONS, type BoneSource, type TextureSource } from './types'
 
 // The bone's pivot goes to the centre of the item model; elements must stay within -16..32 there.
 const CENTRE = 8
 const REACH = 24
-const ANGLES = [-45, -22.5, 0, 22.5, 45]
-const AXES = ['x', 'y', 'z'] as const
 
 const round = (v: number) => Math.round(v * 1e6) / 1e6
 
@@ -22,7 +21,7 @@ export function boneScale(bone: BoneSource): number {
 	return Math.max(1, reach / REACH)
 }
 
-export function itemModel(bone: BoneSource, textures: TextureSource[], textureId: (index: number) => string, errors: string[]): { json: object; scale: number } {
+export function itemModel(bone: BoneSource, textures: TextureSource[], textureId: (index: number) => string, target: Target, errors: string[]): { json: object; scale: number } {
 	const k = boneScale(bone)
 	const place = (v: Vec3) => v.map((x, i) => round(CENTRE + (x - bone.pivot[i]!) / k))
 	const used = new Set<number>()
@@ -33,13 +32,10 @@ export function itemModel(bone: BoneSource, textures: TextureSource[], textureId
 		const hi = [0, 1, 2].map((i) => Math.max(cube.from[i]!, cube.to[i]!) + cube.inflate) as Vec3
 		const element: Record<string, unknown> = { from: place(lo), to: place(hi) }
 
-		const turned = [0, 1, 2].filter((i) => cube.rotation[i] !== 0)
-		if (turned.length > 1) errors.push(`${at}: 回転が 2 軸以上あります（item model は 1 軸だけです）。`)
-		else if (turned.length === 1) {
-			const axis = turned[0]!
-			const angle = cube.rotation[axis]!
-			if (!ANGLES.includes(angle)) errors.push(`${at}: 回転 ${angle}° は item model で使えません（使えるのは -45・-22.5・22.5・45 だけです）。`)
-			element.rotation = { angle, axis: AXES[axis], origin: place(cube.origin) }
+		if (cube.rotation.some((v) => v !== 0)) {
+			const rotation = target.elementRotation(cube.rotation, place(cube.origin) as Vec3)
+			if (typeof rotation === 'string') errors.push(`${at}: ${rotation}`)
+			else element.rotation = rotation
 		}
 		if (!cube.shade) element.shade = false
 

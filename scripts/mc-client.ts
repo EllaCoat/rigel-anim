@@ -4,7 +4,7 @@
 // from java. mc-shot.ts drives it through the server's console and keys posted to its window (Windows only).
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, linkSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs'
 import { delimiter, dirname, join } from 'node:path'
 import { dlopen, FFIType, ptr } from 'bun:ffi'
 import { fetchVerified, javaPath, MC_VERSION, Output, ROOT } from '../bench/mc'
@@ -13,6 +13,7 @@ const VERSION_MANIFEST = 'https://piston-meta.mojang.com/mc/game/version_manifes
 const RESOURCES = 'https://resources.download.minecraft.net'
 
 export const CLIENT_DIR = join(ROOT, `client-${MC_VERSION}`)
+export const FONT_MINECRAFT_DIR = join(CLIENT_DIR, 'minecraft')
 export const GAME_DIR = join(CLIENT_DIR, 'game')
 const LIBRARIES = join(CLIENT_DIR, 'libraries')
 const ASSETS = join(CLIENT_DIR, 'assets')
@@ -93,7 +94,21 @@ export async function setupClient(): Promise<void> {
 		path: join(ASSETS, 'objects', hash.slice(0, 2), hash),
 	})))
 	mkdirSync(GAME_DIR, { recursive: true })
+	layOutLikeMinecraft()
 	console.log(JSON.stringify({ client: CLIENT_DIR, libraries: libraryJars(version).length, assets: wanted.length }))
+}
+
+// The jar, version JSON and assets placed like the launcher places them in .minecraft, for the plugin's text_display
+// preview (devtools.ts reads fonts here when the player's .minecraft lacks the version).
+export function layOutLikeMinecraft(): void {
+	const versionDir = join(FONT_MINECRAFT_DIR, 'versions', MC_VERSION)
+	mkdirSync(versionDir, { recursive: true })
+	for (const [from, name] of [[CLIENT_JAR, `${MC_VERSION}.jar`], [VERSION_JSON, `${MC_VERSION}.json`]] as const) {
+		const to = join(versionDir, name)
+		if (!existsSync(to)) linkSync(from, to)
+	}
+	const assets = join(FONT_MINECRAFT_DIR, 'assets')
+	if (!existsSync(assets)) symlinkSync(ASSETS, assets, 'junction')
 }
 
 // Written before every launch, so a run never depends on what an earlier one left. The FOV and its effects
@@ -131,14 +146,17 @@ const user32 = dlopen('user32.dll', {
 	GetWindowThreadProcessId: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.u32 },
 	PostMessageW: { args: [FFIType.ptr, FFIType.u32, FFIType.u64, FFIType.i64], returns: FFIType.i32 },
 })
-const GLFW_CLASS = Buffer.from('GLFW30\0', 'utf16le')
+// The window classes of the window libraries the clients use: GLFW for 1.20.4, SDL 3 for 26.3.
+const WINDOW_CLASSES = ['GLFW30', 'SDL_app'].map((name) => Buffer.from(`${name}\0`, 'utf16le'))
 
 function findWindow(pid: number) {
 	const owner = new Uint32Array(1)
-	let hwnd = null
-	while ((hwnd = user32.symbols.FindWindowExW(null, hwnd, ptr(GLFW_CLASS), null))) {
-		user32.symbols.GetWindowThreadProcessId(hwnd, ptr(owner))
-		if (owner[0] === pid) return hwnd
+	for (const windowClass of WINDOW_CLASSES) {
+		let hwnd = null
+		while ((hwnd = user32.symbols.FindWindowExW(null, hwnd, ptr(windowClass), null))) {
+			user32.symbols.GetWindowThreadProcessId(hwnd, ptr(owner))
+			if (owner[0] === pid) return hwnd
+		}
 	}
 	return null
 }
@@ -181,8 +199,10 @@ export class Client {
 		])
 	}
 
-	// GLFW reads key messages from its queue whether or not the window has focus, so posting them needs
-	// neither the foreground nor a real keyboard.
+	// GLFW (1.20.4) reads key messages from its queue whether or not the window has focus, so posting them needs
+	// neither the foreground nor a real keyboard. SDL 3 (26.3) tags key events with the window that has keyboard
+	// focus, and the client drops events without a window (KeyboardHandler.keyPress), so 26.3 takes the keys only
+	// while its window is in the foreground.
 	async press(key: { vk: number; scancode: number }): Promise<void> {
 		this.window ??= findWindow(this.proc.pid!)
 		if (!this.window) throw new Error('the client window was not found')

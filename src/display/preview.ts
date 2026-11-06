@@ -1,5 +1,6 @@
 import type { DisplaySettings } from '../export/types'
 import { textJson } from '../export/display'
+import { projectVersion } from '../export/settings'
 import { isRigelProject } from '../easing/keyframes'
 import { drawTextDisplay, getFontLibrary, layoutTextDisplay, type FontLibrary } from '../font'
 import { readDisplay } from './settings'
@@ -26,7 +27,7 @@ export function onTextPreviewDrawn(listener: () => void): () => void {
 
 interface TextImage {
 	canvas: HTMLCanvasElement
-	// Text pixels, as Minecraft lays them out: W is the longest line, H is 10 per line.
+	// Text pixels, as Minecraft lays them out: W is the longest line, H is the bottom of the background.
 	width: number
 	height: number
 	// The text pixels the canvas covers: the background's u from -1 to W and v from -1 to H, and whatever is drawn past it.
@@ -41,7 +42,7 @@ let reported = ''
 const warned = new WeakSet<FontLibrary>()
 
 async function drawText(display: TextSettings): Promise<TextImage> {
-	const loaded = await getFontLibrary()
+	const loaded = await getFontLibrary(projectVersion(Project!))
 	if ('error' in loaded) {
 		if (loaded.error !== reported) Blockbench.showQuickMessage(`${loaded.error} 標準のフォントで描きます。`, 4000)
 		reported = loaded.error
@@ -84,7 +85,7 @@ function fallbackText(display: TextSettings): TextImage {
 	const lines = plainText(display.text).split('\n')
 	const widths = lines.map((l) => Math.ceil(ctx.measureText(l).width / scale))
 	const width = Math.max(0, ...widths)
-	const height = lines.length * 10
+	const height = lines.length * 10 - (projectVersion(Project!) === '1.20.4' ? 0 : 1)
 	canvas.width = (width + 1) * scale
 	canvas.height = (height + 1) * scale
 	const background = display.defaultBackground ? 0x40000000 : display.background

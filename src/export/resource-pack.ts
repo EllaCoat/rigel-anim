@@ -1,7 +1,5 @@
 import { NAMESPACE } from './datapack'
 
-export const PACK_FORMAT = 22
-
 export function itemModelPath(item: string): string {
 	const [namespace, path] = item.split(':') as [string, string]
 	return `assets/${namespace}/models/item/${path}.json`
@@ -29,6 +27,19 @@ export function mergeItemModel(existing: string | undefined, item: string, rig: 
 	return { json: `${JSON.stringify(model, null, '\t')}\n`, cmds }
 }
 
-export function packMeta(): string {
-	return `${JSON.stringify({ pack: { pack_format: PACK_FORMAT, description: 'rigel' } }, null, '\t')}\n`
+// 26.3's item definition that draws one model, at the same ID under items/; the item_model component names it.
+export const itemDefinition = (model: string) => `${JSON.stringify({ model: { type: 'minecraft:model', model } })}\n`
+
+export function itemDefinitionPath(id: string): string {
+	const [namespace, path] = id.split(':') as [string, string]
+	return `assets/${namespace}/items/${path}.json`
 }
+
+// The launcher shares resourcepacks/ among versions, so one pack.mcmeta declares both 1.20.4's and 26.3's formats,
+// in the fields each reads (26.3: PackFormat.IntermediaryFormat.validate).
+export const RESOURCE_PACK = { pack_format: 22, supported_formats: [22, 97], min_format: 22, max_format: 97 }
+
+export const packMeta = `${JSON.stringify({ pack: { ...RESOURCE_PACK, description: 'rigel' } }, null, '\t')}\n`
+
+// What Rigel wrote when it exported for 1.20.4 only; it is Rigel's, so it gives way to packMeta.
+export const OLD_PACK_META = `${JSON.stringify({ pack: { pack_format: 22, description: 'rigel' } }, null, '\t')}\n`

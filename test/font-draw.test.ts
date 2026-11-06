@@ -53,6 +53,13 @@ describe('size', () => {
 		expect([two.width, two.height]).toEqual([8, 42])
 	})
 
+	test('a 26.3 text_display without lines, whose background is empty, still gets a canvas and draws nothing', async () => {
+		const v26 = await loadGame({ ...vanilla(), version: '26.3' })
+		const result = rasterizeTextDisplay(layoutTextDisplay(v26, spec('', { background: 0xff000000 })))
+		expect(result.height).toBeGreaterThan(0)
+		expect(Array.from(result.data).every((value) => value === 0)).toBe(true)
+	})
+
 	test('a glyph above the line grows the canvas upwards', () => {
 		const result = raster('T')
 		expect([result.left, result.top]).toEqual([-1, -3])

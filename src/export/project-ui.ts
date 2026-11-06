@@ -1,5 +1,8 @@
+import { refreshAllDisplayPreviews } from '../display/preview'
 import { isRigelProject } from '../easing/keyframes'
+import { applyVersion } from '../format'
 import { normalizeItem, settingsFieldProblems, uniqueName } from './build'
+import { GAME_VERSIONS, isGameVersion } from './target'
 import { getThinMode, newRigId, readProjectSettings, writeProjectSettings, type ProjectSettings } from './settings'
 
 const ACTION_ID = 'rigel_project_settings'
@@ -12,6 +15,7 @@ const PAGES: Record<SettingsPage, { label: string; icon: string }> = {
 	optimize: { label: '最適化', icon: 'speed' },
 }
 const PAGE_OF: Record<keyof ProjectSettings, SettingsPage> = {
+	version: 'general',
 	rig: 'general',
 	id: 'general',
 	item: 'general',
@@ -61,6 +65,7 @@ export function openProjectSettings(page: SettingsPage, onExport: () => void, ex
 		const tolerance = { position: number('thinPosition', current.tolerance.position), rotation: number('thinRotation', current.tolerance.rotation) }
 		const item = String(form.item ?? '').trim()
 		return {
+			version: isGameVersion(form.version) ? form.version : current.version,
 			rig: String(form.rig ?? '').trim(),
 			id: current.id || newRigId(),
 			item: item ? normalizeItem(item) : '',
@@ -83,6 +88,9 @@ export function openProjectSettings(page: SettingsPage, onExport: () => void, ex
 		}
 		writeProjectSettings(project, settings)
 		project.saved = false
+		applyVersion(settings.version)
+		// Text previews use the version's font.
+		if (settings.version !== current.version) refreshAllDisplayPreviews()
 		return settings
 	}
 	const saveAndExport = (form: FormResult) => {
@@ -118,6 +126,14 @@ export function openProjectSettings(page: SettingsPage, onExport: () => void, ex
 			},
 		},
 		form: {
+			version: {
+				label: '書き出し先の Minecraft',
+				type: 'select',
+				options: Object.fromEntries(GAME_VERSIONS.map((v) => [v, v])),
+				value: current.version,
+				description: 'この版のデータパックとリソースパックを書き出します。26.3 では、Cube を好きな角度で、2 軸以上にも回せます。',
+				condition: on('general'),
+			},
 			rig: {
 				label: 'リグ名',
 				type: 'text',
@@ -130,7 +146,7 @@ export function openProjectSettings(page: SettingsPage, onExport: () => void, ex
 				type: 'text',
 				value: current.item,
 				placeholder: 'minecraft:white_dye',
-				description: 'CustomModelData を付けて、Bone の表示に使う item です。',
+				description: 'Bone の表示に使う item です。1.20.4 では CustomModelData を、26.3 では item_model を付けて使います。',
 				condition: on('general'),
 			},
 			teleportDuration: {

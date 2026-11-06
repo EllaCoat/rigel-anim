@@ -2,8 +2,10 @@ import { parseJson, type ResourceStack } from './resources'
 
 export interface ClientOptions {
 	lang: string
-	/** forceUnicodeFont: Minecraft.selectMainFont renames minecraft:default to minecraft:uniform. */
+	/** forceUnicodeFont: 1.20.4's Minecraft.selectMainFont renames minecraft:default to minecraft:uniform; 26.3 turns the font option `uniform` on. */
 	forceUnicodeFont: boolean
+	/** 26.3's font option `jp`. Options.japaneseGlyphVariantsDefault: on when the system language is Japanese. */
+	japaneseGlyphVariants: boolean
 	/** Options.getBackgroundOpacity(0.25): the text_display default background is black with this alpha. */
 	backgroundOpacity: number
 	/** `key_key.jump:key.keyboard.space` as `key.jump` -> `key.keyboard.space`. */
@@ -23,9 +25,11 @@ export function parseOptions(text: string | undefined): ClientOptions {
 	const keys = new Map<string, string>()
 	for (const [name, value] of values) if (name.startsWith('key_')) keys.set(name.slice(4), value)
 	const opacity = Number(values.get('textBackgroundOpacity') ?? 0.5)
+	const jp = values.get('japaneseGlyphVariants')
 	return {
 		lang: values.get('lang')?.trim() || DEFAULT_LANGUAGE,
 		forceUnicodeFont: values.get('forceUnicodeFont') === 'true',
+		japaneseGlyphVariants: jp === undefined ? new Intl.Locale(Intl.DateTimeFormat().resolvedOptions().locale).language === 'ja' : jp === 'true',
 		backgroundOpacity: values.get('backgroundForChatOnly') === 'false' && Number.isFinite(opacity) ? Math.fround(opacity) : DEFAULT_BACKGROUND_OPACITY,
 		keys,
 	}

@@ -1,9 +1,10 @@
-// Loads the real Minecraft 1.20.4 files and prints the width and lines of some texts, to compare with the game.
-// Usage: bun scripts/font-check.ts [--dir <.minecraft>] [--pack <folder or zip>]... [--art] [--text <text>]...
+// Loads the real Minecraft files of a version and prints the width and lines of some texts, to compare with the game.
+// Usage: bun scripts/font-check.ts [--version 1.20.4|26.3] [--dir <.minecraft>] [--pack <folder or zip>]... [--art] [--text <text>]...
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { inflateSync } from 'node:zlib'
 import { rasterizeTextDisplay } from '../src/font/draw'
 import { layoutTextDisplay, type TextDisplaySpec } from '../src/font/layout'
+import { isGameVersion } from '../src/export/target'
 import { loadFontLibrary } from '../src/font/library'
 import type { DecodedImage } from '../src/font/providers'
 
@@ -12,6 +13,8 @@ const values = (flag: string) => args.flatMap((arg, i) => (arg === flag && args[
 const minecraftDir = values('--dir')[0] ?? `${process.env.APPDATA}/.minecraft`
 const packs = values('--pack')
 const art = args.includes('--art')
+const version = values('--version')[0] ?? '1.20.4'
+if (!isGameVersion(version)) throw new Error(`unknown --version ${version}`)
 
 /** Non-interlaced PNG; enough for the textures Minecraft's fonts use. */
 async function decodePng(png: Uint8Array): Promise<DecodedImage> {
@@ -83,7 +86,7 @@ async function decodePng(png: Uint8Array): Promise<DecodedImage> {
 	return { width, height, data }
 }
 
-const result = await loadFontLibrary({ fs: { existsSync, readFileSync, readdirSync, statSync }, sources: { minecraftDir, resourcePacks: packs }, decodeImage: decodePng })
+const result = await loadFontLibrary({ fs: { existsSync, readFileSync, readdirSync, statSync }, sources: { minecraftDir, resourcePacks: packs }, decodeImage: decodePng, version })
 if ('error' in result) {
 	console.error(result.error)
 	process.exit(1)

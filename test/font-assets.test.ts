@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { loadFontLibrary } from '../src/font/library'
 import { openZip } from '../src/font/zip'
-import { bytesOf, decodeImage, image, installation, layout, loadGame, MINECRAFT_DIR, vanilla, zipOf, type Files } from './font-support'
+import { bytesOf, decodeImage, image, installation, layout, loadGame, MINECRAFT_DIR, vanilla, zipOf, type Files, type Game } from './font-support'
 
 const text = (bytes: Uint8Array) => new TextDecoder().decode(bytes)
 const widthOf = (library: Awaited<ReturnType<typeof loadGame>>, content: string, overrides = {}) => layout(library, content, overrides).width
@@ -47,7 +47,7 @@ describe('vanilla assets', () => {
 
 	test('without the asset index the jar is enough and a warning says what is missing', async () => {
 		const { fs } = installation(vanilla())
-		const result = await loadFontLibrary({ fs: { ...fs, existsSync: (path) => !path.includes('/indexes/') && fs.existsSync(path) }, sources: { minecraftDir: MINECRAFT_DIR, resourcePacks: [] }, decodeImage })
+		const result = await loadFontLibrary({ fs: { ...fs, existsSync: (path) => !path.includes('/indexes/') && fs.existsSync(path) }, sources: { minecraftDir: MINECRAFT_DIR, resourcePacks: [] }, decodeImage, version: '1.20.4' })
 		if ('error' in result) throw new Error(result.error)
 		expect(result.library.warnings.join()).toContain('アセット索引')
 		expect(widthOf(result.library, 'AB')).toBe(6)
@@ -56,9 +56,9 @@ describe('vanilla assets', () => {
 
 	test('a missing .minecraft or jar is an error with the reason, not a library', async () => {
 		const { fs } = installation(vanilla())
-		const missingDir = await loadFontLibrary({ fs, sources: { minecraftDir: '/nowhere/.minecraft', resourcePacks: [] }, decodeImage })
+		const missingDir = await loadFontLibrary({ fs, sources: { minecraftDir: '/nowhere/.minecraft', resourcePacks: [] }, decodeImage, version: '1.20.4' })
 		expect(missingDir).toEqual({ error: expect.stringContaining('/nowhere/.minecraft') })
-		const noJar = await loadFontLibrary({ fs: { ...fs, existsSync: (path) => !path.endsWith('.jar') && fs.existsSync(path) }, sources: { minecraftDir: MINECRAFT_DIR, resourcePacks: [] }, decodeImage })
+		const noJar = await loadFontLibrary({ fs: { ...fs, existsSync: (path) => !path.endsWith('.jar') && fs.existsSync(path) }, sources: { minecraftDir: MINECRAFT_DIR, resourcePacks: [] }, decodeImage, version: '1.20.4' })
 		expect(noJar).toEqual({ error: expect.stringContaining('1.20.4.jar') })
 	})
 })
@@ -186,6 +186,54 @@ describe('fonts', () => {
 	test('forceUnicodeFont in options.txt renames the default font to uniform', async () => {
 		const library = await loadGame({ ...vanilla(), options: 'forceUnicodeFont:true\n' })
 		expect([widthOf(library, 'A'), widthOf(library, 'a')]).toEqual([6, 4])
+	})
+
+	// 26.3's default.json references its bitmap font with the filter {uniform: false}.
+	const filtered = (bitmapFilter?: Record<string, boolean>): Game => {
+		const base = vanilla()
+		const bitmap = { type: 'bitmap', file: 'minecraft:font/test.png', ascent: 7, chars: ['ABC'], ...(bitmapFilter ? { filter: bitmapFilter } : {}) }
+		return {
+			...base,
+			version: '26.3',
+			jar: {
+				...base.jar,
+				'minecraft/font/default.json': json({
+					providers: [
+						{ type: 'reference', id: 'minecraft:include/space' },
+						{ type: 'reference', id: 'minecraft:include/bitmap', filter: { uniform: false } },
+						{ type: 'reference', id: 'minecraft:include/unifont' },
+					],
+				}),
+				'minecraft/font/include/bitmap.json': json({ providers: [bitmap] }),
+			},
+		}
+	}
+
+	test('a unihex provider without size_overrides loads in 26.3, which defaults them to none, and is skipped in 1.20.4', async () => {
+		const unihex = { type: 'unihex', hex_file: 'minecraft:font/unifont.zip' }
+		const game = (version: Game['version']): Game => ({ ...vanilla(), version, packs: { '/packs/p': { 'minecraft/font/default.json': json({ providers: [unihex] }) } } })
+		const v26 = await loadGame(game('26.3'))
+		expect(v26.warnings.join('\n')).not.toContain('size_overrides')
+		expect(widthOf(v26, 'あ')).toBe(8)
+		expect((await loadGame(game('1.20.4'))).warnings.join('\n')).toContain('size_overrides がありません')
+	})
+
+	// FontManager.getFontOptions and FontOption.Filter.apply
+	test('26.3 uses a filtered provider only while the options match, and does not rename the font', async () => {
+		expect(widthOf(await loadGame({ ...filtered(), options: 'japaneseGlyphVariants:false\n' }), 'A')).toBe(4)
+		const forced = await loadGame({ ...filtered(), options: 'forceUnicodeFont:true\n' })
+		expect([widthOf(forced, 'A'), widthOf(forced, 'a')]).toEqual([6, 4])
+	})
+
+	// FontManager.BuilderResult.mergeFilters
+	test("26.3: a reference's filter wins over the filters of the providers it splices in", async () => {
+		const game = filtered({ uniform: true, jp: true })
+		expect(widthOf(await loadGame({ ...game, options: 'japaneseGlyphVariants:false\n' }), 'A')).toBe(6)
+		expect(widthOf(await loadGame({ ...game, options: 'japaneseGlyphVariants:true\n' }), 'A')).toBe(4)
+	})
+
+	test('1.20.4 reads no filters', async () => {
+		expect(widthOf(await loadGame({ ...filtered({ jp: true }), version: '1.20.4', options: 'japaneseGlyphVariants:false\n' }), 'A')).toBe(4)
 	})
 
 	test('a font file that starts with a byte order mark is read', async () => {

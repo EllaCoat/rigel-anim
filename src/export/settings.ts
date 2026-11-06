@@ -1,4 +1,5 @@
-import { FORMAT_ID } from '../format'
+import { applyVersion, FORMAT_ID } from '../format'
+import { DEFAULT_VERSION, isGameVersion, type GameVersion } from './target'
 import { WARM_PRIORITIES, type AnimationThin, type Tolerance, type WarmPriority } from './types'
 
 export const DEFAULT_CHUNK_LINES = 500
@@ -8,6 +9,7 @@ export const DEFAULT_TELEPORT_DURATION = 1
 export const DEFAULT_TOLERANCE: Tolerance = { position: 0, rotation: 0 }
 
 export interface ProjectSettings {
+	version: GameVersion
 	rig: string
 	id: number
 	item: string
@@ -22,6 +24,7 @@ export interface ProjectSettings {
 }
 
 const KEYS = {
+	version: 'rigel_version',
 	rig: 'rigel_rig',
 	id: 'rigel_id',
 	item: 'rigel_item',
@@ -47,6 +50,7 @@ export function registerExportSettings(): void {
 	const condition = { formats: [FORMAT_ID] }
 	const exposed = false
 	properties = [
+		new Property(ModelProject, 'string', KEYS.version, { condition, exposed, default: DEFAULT_VERSION }),
 		new Property(ModelProject, 'string', KEYS.rig, { condition, exposed }),
 		new Property(ModelProject, 'number', KEYS.id, { condition, exposed, default: 0 }),
 		new Property(ModelProject, 'string', KEYS.item, { condition, exposed }),
@@ -62,7 +66,15 @@ export function registerExportSettings(): void {
 		new Property(Animation, 'enum', THIN_KEY, { condition, exposed, default: 'project', values: [...ANIMATION_THIN] }),
 		new Property(Animation, 'number', POSITION_KEY, { condition, exposed, default: DEFAULT_TOLERANCE.position }),
 		new Property(Animation, 'number', ROTATION_KEY, { condition, exposed, default: DEFAULT_TOLERANCE.rotation }),
+		Blockbench.on('select_project', ({ project }) => applyProjectVersion(project)),
+		// Opening a file selects the project before its properties are read.
+		Codecs.project!.on('parsed', () => applyProjectVersion(Project)),
 	]
+	applyProjectVersion(Project)
+}
+
+function applyProjectVersion(project: typeof Project): void {
+	if (project && project.format?.id === FORMAT_ID) applyVersion(projectVersion(project))
 }
 
 export function unregisterExportSettings(): void {
@@ -74,10 +86,17 @@ const text = (bag: Bag, key: string) => (typeof bag[key] === 'string' ? (bag[key
 const number = (bag: Bag, key: string, fallback: number) => (typeof bag[key] === 'number' && Number.isFinite(bag[key]) ? (bag[key] as number) : fallback)
 const toleranceIn = (bag: Bag): Tolerance => ({ position: number(bag, POSITION_KEY, DEFAULT_TOLERANCE.position), rotation: number(bag, ROTATION_KEY, DEFAULT_TOLERANCE.rotation) })
 
+// Projects saved before Rigel wrote for 26.3 have no version and were made for 1.20.4.
+export function projectVersion(project: ModelProject): GameVersion {
+	const value = (project as unknown as Bag)[KEYS.version]
+	return isGameVersion(value) ? value : DEFAULT_VERSION
+}
+
 export function readProjectSettings(project: ModelProject): ProjectSettings {
 	const bag = project as unknown as Bag
 	const tolerance = toleranceIn(bag)
 	return {
+		version: projectVersion(project),
 		rig: text(bag, KEYS.rig),
 		id: number(bag, KEYS.id, 0),
 		item: text(bag, KEYS.item),

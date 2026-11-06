@@ -1,4 +1,5 @@
 import type { Vec3 } from '../bake/matrix'
+import type { GameVersion } from './target'
 
 export type Direction = 'north' | 'south' | 'east' | 'west' | 'up' | 'down'
 export const DIRECTIONS: readonly Direction[] = ['north', 'south', 'east', 'west', 'up', 'down']
@@ -131,6 +132,7 @@ export interface RigSource {
 }
 
 export interface RigSettings {
+	version: GameVersion
 	rig: string
 	// Unsigned 32-bit; the first part of every entity UUID of the rig.
 	id: number

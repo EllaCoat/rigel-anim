@@ -179,7 +179,8 @@ function posing(spec: Spec, animations: { name: string; length: number }[], view
 	if (index < 0) fail(`views ${view.name}: the model has no animation "${view.pose.animation}"`)
 	const last = Math.max(0, Math.ceil(animations[index]!.length * TICKS_PER_SECOND - 1e-9))
 	const tick = Math.min(view.pose.tick, last)
-	if (!view.pose.play) return [...thaw, ...Array.from({ length: tick + 1 }, (_, f) => `${call(`frames/${index}/${f}`)} with storage rigel:const FrameArgs`)]
+	const args = (f: number) => (f === 0 ? `rigel:${spec.rig}` : 'rigel:const FrameArgs')
+	if (!view.pose.play) return [...thaw, ...Array.from({ length: tick + 1 }, (_, f) => `${call(`frames/${index}/${f}`)} with storage ${args(f)}`)]
 	// play writes f/0 and the first step keeps it (same game time), so frame t needs t + 1 steps.
 	const start = ['tick freeze', call('stop'), `${call('play')} {ID:${index}}`]
 	// A frozen client ticks entities only during server steps, and the last step's writes arrive after its last tick.

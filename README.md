@@ -95,11 +95,11 @@ Blockbench 上では、ブロックとアイテムは大きさと向きが分か
 
 ### テキストのフォント
 
-Blockbench 上の text_display は、Minecraft 1.20.4 のフォントを使い、Minecraft と同じ大きさ・位置・折り返しで描く。フォントは、Minecraft の公式ランチャーが置いたファイルから読む。そのため、1.20.4 を一度起動しておく必要がある。プラグインにもこのリポジトリにも、Minecraft のアセットは入っていない。
+Blockbench 上の text_display は、プロジェクトで書き出し先に選んだ版（1.20.4 か 26.3）のフォントを使い、Minecraft と同じ大きさ・位置・折り返しで描く。フォントは、Minecraft の公式ランチャーが置いたファイルから読む。そのため、その版を一度起動しておく必要がある。プラグインにもこのリポジトリにも、Minecraft のアセットは入っていない。
 
 File > Preferences > Settings の Preview で、次の 2 つを設定する。
 
-- 「text_display のプレビュー：.minecraft の場所」：`versions/1.20.4/1.20.4.jar` とアセット（`assets/indexes`・`assets/objects`）があるフォルダ。既定は、Windows では `%APPDATA%\.minecraft`、macOS では `~/Library/Application Support/minecraft`、Linux では `~/.minecraft`。
+- 「text_display のプレビュー：.minecraft の場所」：`versions/<版>/<版>.jar`（例：`versions/26.3/26.3.jar`）とアセット（`assets/indexes`・`assets/objects`）があるフォルダ。既定は、Windows では `%APPDATA%\.minecraft`、macOS では `~/Library/Application Support/minecraft`、Linux では `~/.minecraft`。
 - 「text_display のプレビュー：フォントを読むリソースパック」：独自のフォントを入れたリソースパックのフォルダか `.zip`。複数指定するときは `;` で区切る。後に書いたものほど優先される。
 
 初めてフォントを読むときは、Blockbench がフォルダごとに読み取りの許可を求める。「Always allow for this plugin」を選ぶと、次からは聞かれない。拒否した場合は、設定を変えるまでブラウザーのフォントで描く。
@@ -107,7 +107,7 @@ File > Preferences > Settings の Preview で、次の 2 つを設定する。
 - 対応する provider は `bitmap`・`space`・`reference`・`unihex`。`ttf` と `legacy_unicode` は読まないので、それらの provider の文字は欠けた文字の四角になる。
 - 背景の外へはみ出す文字（ascent の大きい bitmap、負の幅の space で戻した文字など）も、Minecraft と同じくはみ出したまま描く。
 - 文字どうしや下線が重なったところは、書いた順に後のものを上に描く。Minecraft では、どれが上に出るかはカメラからの距離で決まるので、見る位置によっては上下が入れ替わる。
-- `.minecraft` の `options.txt` から、言語（`translate` の訳に使う）、Unicode フォントを強制するかどうか、既定の背景の濃さを読む。
+- `.minecraft` の `options.txt` から、言語（`translate` の訳に使う）、Unicode フォントを強制するかどうか、既定の背景の濃さを読む。26.3 では、日本語の字形を使うかどうか（`japaneseGlyphVariants`）も読み、フォントの provider の `filter` に当てはめる。
 - 読めないフォントやファイルがあると、件数と 1 件目を画面に出す。全件は開発者ツールのコンソールで確認できる。
 - `obfuscated` の文字は入れ替えずにそのまま描く。右から左へ書く文字（アラビア文字など）も並べ替えない。
 

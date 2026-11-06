@@ -1,5 +1,6 @@
 import type { DisplaySettings } from '../export/types'
 import { textJson } from '../export/display'
+import { projectVersion } from '../export/settings'
 import { isRigelProject } from '../easing/keyframes'
 import { drawTextDisplay, getFontLibrary, layoutTextDisplay, type FontLibrary } from '../font'
 import { readDisplay } from './settings'
@@ -41,7 +42,7 @@ let reported = ''
 const warned = new WeakSet<FontLibrary>()
 
 async function drawText(display: TextSettings): Promise<TextImage> {
-	const loaded = await getFontLibrary()
+	const loaded = await getFontLibrary(projectVersion(Project!))
 	if ('error' in loaded) {
 		if (loaded.error !== reported) Blockbench.showQuickMessage(`${loaded.error} 標準のフォントで描きます。`, 4000)
 		reported = loaded.error

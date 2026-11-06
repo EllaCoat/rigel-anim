@@ -1,3 +1,4 @@
+import type { GameVersion } from '../export/target'
 import { loadFontLibrary, type LibraryResult } from './library'
 import type { DecodedImage } from './providers'
 import type { FontSources, ReadFs } from './resources'
@@ -25,7 +26,7 @@ export function registerFontSettings(onChange?: () => void): void {
 	registered = [
 		new Setting(MINECRAFT_DIR_SETTING, {
 			name: 'text_display のプレビュー：.minecraft の場所',
-			description: 'Minecraft 1.20.4 の jar とアセットを読み、text_display のテキストを Minecraft のフォントで描きます。',
+			description: 'プロジェクトの書き出し先の版（1.20.4 か 26.3）の jar とアセットを読み、text_display のテキストを Minecraft のフォントで描きます。',
 			type: 'text',
 			category: 'preview',
 			value: defaultMinecraftDir(),
@@ -96,26 +97,27 @@ async function decodePng(bytes: Uint8Array): Promise<DecodedImage> {
 }
 
 // denied: the user refused the permission dialog, which would otherwise come back on every preview refresh.
-async function load(sources: FontSources): Promise<LibraryResult & { denied?: true }> {
+async function load(sources: FontSources, version: GameVersion): Promise<LibraryResult & { denied?: true }> {
 	try {
 		const fs = scopedReadFs([sources.minecraftDir, ...sources.resourcePacks])
 		if (typeof fs === 'string') return { error: fs, denied: true }
-		return await loadFontLibrary({ fs, sources, decodeImage: decodePng })
+		return await loadFontLibrary({ fs, sources, decodeImage: decodePng, version })
 	} catch (error) {
 		return { error: `Minecraft のフォントを読めませんでした: ${(error as Error).message}` }
 	}
 }
 
 /**
- * The font library for the current settings. It is loaded once and reused until a setting changes. A failure is
- * returned with its reason and tried again on the next call, except a refused permission, which waits for a setting change.
+ * The font library of a Minecraft version for the current settings. It is loaded once and reused until a setting or the
+ * version changes. A failure is returned with its reason and tried again on the next call, except a refused permission,
+ * which waits for a setting change.
  */
-export function getFontLibrary(): Promise<LibraryResult> {
+export function getFontLibrary(version: GameVersion): Promise<LibraryResult> {
 	const sources = readFontSources()
-	const key = JSON.stringify(sources)
+	const key = JSON.stringify({ sources, version })
 	let entry = cached
 	if (entry?.key !== key) {
-		const result = load(sources)
+		const result = load(sources, version)
 		entry = { key, result }
 		cached = entry
 		void result.then((loaded) => {

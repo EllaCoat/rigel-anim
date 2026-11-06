@@ -83,7 +83,7 @@ async function decodePng(png: Uint8Array): Promise<DecodedImage> {
 	return { width, height, data }
 }
 
-const result = await loadFontLibrary({ fs: { existsSync, readFileSync, readdirSync, statSync }, sources: { minecraftDir, resourcePacks: packs }, decodeImage: decodePng })
+const result = await loadFontLibrary({ fs: { existsSync, readFileSync, readdirSync, statSync }, sources: { minecraftDir, resourcePacks: packs }, decodeImage: decodePng, version: '1.20.4' })
 if ('error' in result) {
 	console.error(result.error)
 	process.exit(1)

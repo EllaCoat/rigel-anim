@@ -1,3 +1,4 @@
+import type { GameVersion } from '../export/target'
 import { LazyGlyph, type BakedGlyph, type GlyphInfo, type GlyphProvider } from './glyph'
 import type { ResourceStack } from './resources'
 import { openZip } from './zip'
@@ -13,6 +14,7 @@ export type DecodeImage = (png: Uint8Array) => Promise<DecodedImage>
 export interface LoadContext {
 	stack: ResourceStack
 	decodeImage: DecodeImage
+	version: GameVersion
 }
 
 interface ResourceId {
@@ -60,8 +62,8 @@ const asObject = (value: unknown, field: string): Json => {
 	return value as Json
 }
 
-/** The decoders of BitmapProvider, SpaceProvider, UnihexProvider and ProviderReferenceDefinition. */
-export function parseProvider(value: unknown): ProviderDefinition {
+/** The decoders of BitmapProvider, SpaceProvider, UnihexProvider and ProviderReferenceDefinition of the version. */
+export function parseProvider(value: unknown, version: GameVersion): ProviderDefinition {
 	const json = asObject(value, 'provider')
 	const type = json.type
 	if (type === 'ttf' || type === 'legacy_unicode') return { type: 'unsupported', name: type }
@@ -88,8 +90,9 @@ export function parseProvider(value: unknown): ProviderDefinition {
 		return { type, file: resourceId(json.file, 'file'), height, ascent, grid }
 	}
 	if (type === 'unihex') {
-		if (!Array.isArray(json.size_overrides)) throw new Error('size_overrides がありません')
-		const overrides = json.size_overrides.map((item): SizeOverride => {
+		const sizeOverrides = json.size_overrides === undefined && version !== '1.20.4' ? [] : json.size_overrides
+		if (!Array.isArray(sizeOverrides)) throw new Error('size_overrides がありません')
+		const overrides = sizeOverrides.map((item): SizeOverride => {
 			const range = asObject(item, 'size_overrides の要素')
 			const override = { from: codepoint(range.from, 'from'), to: codepoint(range.to, 'to'), left: int(range.left, 'left'), right: int(range.right, 'right') }
 			if (override.from >= override.to) throw new Error(`size_overrides の範囲が正しくありません: ${override.from}-${override.to}`)

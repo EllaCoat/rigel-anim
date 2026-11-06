@@ -209,6 +209,15 @@ describe('fonts', () => {
 		}
 	}
 
+	test('a unihex provider without size_overrides loads in 26.3, which defaults them to none, and is skipped in 1.20.4', async () => {
+		const unihex = { type: 'unihex', hex_file: 'minecraft:font/unifont.zip' }
+		const game = (version: Game['version']): Game => ({ ...vanilla(), version, packs: { '/packs/p': { 'minecraft/font/default.json': json({ providers: [unihex] }) } } })
+		const v26 = await loadGame(game('26.3'))
+		expect(v26.warnings.join('\n')).not.toContain('size_overrides')
+		expect(widthOf(v26, 'あ')).toBe(8)
+		expect((await loadGame(game('1.20.4'))).warnings.join('\n')).toContain('size_overrides がありません')
+	})
+
 	// FontManager.getFontOptions and FontOption.Filter.apply
 	test('26.3 uses a filtered provider only while the options match, and does not rename the font', async () => {
 		expect(widthOf(await loadGame({ ...filtered(), options: 'japaneseGlyphVariants:false\n' }), 'A')).toBe(4)

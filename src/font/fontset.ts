@@ -66,7 +66,7 @@ export async function loadFontSets(ctx: LoadContext, warn: (message: string) => 
 			for (let i = providers.length - 1; i >= 0; i--) {
 				const where = `フォント ${id}（${layer.name}）の ${i + 1} 番目の provider`
 				try {
-					const def = parseProvider(providers[i])
+					const def = parseProvider(providers[i], ctx.version)
 					const filter = options ? filterOf(providers[i]) : new Map<string, boolean>()
 					if (def.type === 'reference') list.push({ reference: def.id, filter })
 					else if (def.type === 'unsupported') warn(`${where}は ${def.name} のため読みません`)

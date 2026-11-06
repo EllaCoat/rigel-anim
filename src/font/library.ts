@@ -78,7 +78,7 @@ export async function loadFontLibrary({ fs, sources, decodeImage, version }: Loa
 	const options = parseOptions(fs.existsSync(optionsFile) ? new TextDecoder().decode(fs.readFileSync(optionsFile)) : undefined)
 	// 26.3 picks providers by their filters (FontManager.getFontOptions); 1.20.4 has no filters and renames the font instead.
 	const fontOptions = version === '1.20.4' ? undefined : new Set([...(options.forceUnicodeFont ? ['uniform'] : []), ...(options.japaneseGlyphVariants ? ['jp'] : [])])
-	const [fonts, translations] = await Promise.all([loadFontSets({ stack, decodeImage }, warn, fontOptions), loadLanguage(stack, options.lang, warn)])
+	const [fonts, translations] = await Promise.all([loadFontSets({ stack, decodeImage, version }, warn, fontOptions), loadLanguage(stack, options.lang, warn)])
 	return { library: createLibrary(fonts, translations, options, warnings, version === '1.20.4' && options.forceUnicodeFont) }
 }
 

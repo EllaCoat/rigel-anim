@@ -287,6 +287,12 @@ describe('alignment and extents', () => {
 	test('an empty line takes its 10 pixels too', () => {
 		expect(layout(library, mono('a\n\n\n')).height).toBe(40)
 	})
+
+	test('26.3 makes a text_display one pixel shorter than 1.20.4, so its text sits one pixel lower', async () => {
+		const v26 = await loadGame({ ...vanilla(), version: '26.3' })
+		expect([layout(v26, mono('a')).height, layout(v26, mono('a\nb')).height, layout(v26, '').height]).toEqual([9, 19, -1])
+		expect(layout(v26, mono('a\nb')).lines.map((line) => line.y)).toEqual([0, 10])
+	})
 })
 
 describe('colors', () => {

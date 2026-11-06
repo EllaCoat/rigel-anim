@@ -19,6 +19,7 @@ export interface FontLibrary {
 	keybind(name: string): string
 	/** Alpha (0 to 1) of the text_display background when `default_background` is set. */
 	readonly backgroundOpacity: number
+	readonly version: GameVersion
 }
 
 export interface LoadOptions {
@@ -79,10 +80,10 @@ export async function loadFontLibrary({ fs, sources, decodeImage, version }: Loa
 	// 26.3 picks providers by their filters (FontManager.getFontOptions); 1.20.4 has no filters and renames the font instead.
 	const fontOptions = version === '1.20.4' ? undefined : new Set([...(options.forceUnicodeFont ? ['uniform'] : []), ...(options.japaneseGlyphVariants ? ['jp'] : [])])
 	const [fonts, translations] = await Promise.all([loadFontSets({ stack, decodeImage, version }, warn, fontOptions), loadLanguage(stack, options.lang, warn)])
-	return { library: createLibrary(fonts, translations, options, warnings, version === '1.20.4' && options.forceUnicodeFont) }
+	return { library: createLibrary(fonts, translations, options, warnings, version, version === '1.20.4' && options.forceUnicodeFont) }
 }
 
-function createLibrary(fonts: Map<string, FontSet>, translations: Map<string, string>, options: ClientOptions, warnings: string[], uniform: boolean): FontLibrary {
+function createLibrary(fonts: Map<string, FontSet>, translations: Map<string, string>, options: ClientOptions, warnings: string[], version: GameVersion, uniform: boolean): FontLibrary {
 	const missing = new FontSet([])
 	return {
 		warnings,
@@ -96,5 +97,6 @@ function createLibrary(fonts: Map<string, FontSet>, translations: Map<string, st
 			return key === undefined ? (translations.get(name) ?? name) : (translations.get(key) ?? key)
 		},
 		backgroundOpacity: options.backgroundOpacity,
+		version,
 	}
 }

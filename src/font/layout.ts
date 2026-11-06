@@ -93,7 +93,7 @@ export function layoutTextDisplay(library: FontLibrary, spec: TextDisplaySpec): 
 
 	return {
 		width,
-		height: lines.length * LINE_HEIGHT,
+		height: lines.length * LINE_HEIGHT - (library.version === '1.20.4' ? 0 : 1),
 		lines: layout,
 		background: spec.defaultBackground ? (Math.trunc(Math.fround(library.backgroundOpacity * 255)) << 24) >>> 0 : spec.background >>> 0,
 		textAlpha: adjustAlpha(spec.textOpacity & 0xff),

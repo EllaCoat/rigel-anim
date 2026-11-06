@@ -1,4 +1,5 @@
 import { parseText } from '../font/component'
+import type { Target } from './target'
 import { ITEM_DISPLAY_MODES, TEXT_ALIGNMENTS, type DisplaySettings } from './types'
 
 export const RESOURCE_ID = /^[a-z0-9_.-]+:[a-z0-9_./-]+$/
@@ -86,18 +87,22 @@ export function boneNbtProblems(name: string, nbt: string): string[] {
 	return extraNbtProblems(`Bone「${name}」`, nbt, BONE_OWN_KEYS)
 }
 
-export function blockStateNbt(block: string): string | undefined {
+// The ID and properties of a block written like minecraft:oak_stairs[facing=east], or undefined for another shape.
+function parseBlockState(block: string): { id: string; properties: [string, string][] } | undefined {
 	const m = BLOCK_STATE.exec(normalizeId(block))
 	if (!m) return undefined
-	const properties = (m[2] ?? '').split(',').map((p) => p.trim()).filter((p) => p.length > 0)
-	const pairs: string[] = []
-	for (const p of properties) {
+	const properties: [string, string][] = []
+	for (const p of (m[2] ?? '').split(',').map((s) => s.trim()).filter((s) => s.length > 0)) {
 		const pm = PROPERTY.exec(p)
 		if (!pm) return undefined
-		// Minecraft reads property values only as strings.
-		pairs.push(`${pm[1]}:"${pm[2]}"`)
+		properties.push([pm[1]!, pm[2]!])
 	}
-	return `{Name:"${m[1]}"${pairs.length > 0 ? `,Properties:{${pairs.join(',')}}` : ''}}`
+	return { id: m[1]!, properties }
+}
+
+export function blockStateNbt(block: string, target: Target): string | undefined {
+	const state = parseBlockState(block)
+	return state && target.blockState(state.id, state.properties)
 }
 
 // Minecraft drops text that does not parse as JSON without an error, keeping the old text.
@@ -111,7 +116,6 @@ export function textJson(text: string): string {
 	return typeof value === 'string' || (typeof value === 'object' && value !== null) ? JSON.stringify(value) : JSON.stringify(text)
 }
 
-const quoted = (s: string) => `'${s.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`
 const byte = (v: number) => `${(Math.round(v) << 24) >> 24}b`
 const bool = (v: boolean) => (v ? '1b' : '0b')
 
@@ -121,7 +125,7 @@ export function displayProblems(name: string, d: DisplaySettings): string[] {
 	if (!d.scale.every((v) => Number.isFinite(v))) problems.push(`${at}: 拡大は数にしてください。`)
 	problems.push(...extraNbtProblems(at, d.nbt, OWN_KEYS))
 	if (d.kind === 'block') {
-		if (!blockStateNbt(d.block)) problems.push(`${at}: ブロックは minecraft:oak_stairs[facing=east] の形で入力してください。`)
+		if (!parseBlockState(d.block)) problems.push(`${at}: ブロックは minecraft:oak_stairs[facing=east] の形で入力してください。`)
 	} else if (d.kind === 'item') {
 		if (!RESOURCE_ID.test(normalizeId(d.item))) problems.push(`${at}: item は minecraft:iron_axe のような ID で入力してください。`)
 		if (d.tag.trim()) {
@@ -139,16 +143,14 @@ export function displayProblems(name: string, d: DisplaySettings): string[] {
 }
 
 // The summon compound's keys for the display, without UUID, Tags and the transformation.
-export function displayNbt(d: DisplaySettings): string {
+export function displayNbt(d: DisplaySettings, target: Target): string {
 	const parts: string[] = []
-	if (d.kind === 'block') parts.push('id:"minecraft:block_display"', `block_state:${blockStateNbt(d.block)}`)
-	else if (d.kind === 'item') {
-		const tag = d.tag.trim() ? `,tag:${d.tag.trim()}` : ''
-		parts.push('id:"minecraft:item_display"', `item:{id:"${normalizeId(d.item)}",Count:1b${tag}}`, `item_display:"${d.mode}"`)
-	} else
+	if (d.kind === 'block') parts.push('id:"minecraft:block_display"', `block_state:${blockStateNbt(d.block, target)}`)
+	else if (d.kind === 'item') parts.push('id:"minecraft:item_display"', `item:${target.item(normalizeId(d.item), d.tag.trim())}`, `item_display:"${d.mode}"`)
+	else
 		parts.push(
 			'id:"minecraft:text_display"',
-			`text:${quoted(textJson(d.text))}`,
+			`text:${target.text(d.text)}`,
 			`line_width:${d.lineWidth}`,
 			`background:${d.background | 0}`,
 			`text_opacity:${byte(d.textOpacity)}`,

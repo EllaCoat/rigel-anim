@@ -139,7 +139,7 @@ async function main(): Promise<void> {
 		await server.sync()
 		await sleep(100 * TICK_MS)
 
-		const gametime = async () => Number((await server.run('time query gametime', /The time is (\d+)/))[1])
+		const gametime = async () => Number((await server.run('time query gametime', /The (?:game )?time is (\d+)/))[1])
 		const modes: Record<string, unknown> = {}
 		for (let mode = 0; mode < MODES.length; mode++) {
 			await setMode(server, spec, mode)

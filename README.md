@@ -5,7 +5,7 @@ Blockbench で作ったモデルとアニメーションを、Minecraft Java Edi
 - 書き出し先の版：Minecraft 1.20.4 と 26.3
 - 対応する Blockbench：デスクトップ版の 5.2.1 以降
 
-開発の初期段階で、いま書き出せるのは Minecraft 1.20.4 向けのデータパックとリソースパックだけ。26.3 向けの書き出しはまだできない。
+開発の初期段階にある。データパックとリソースパックは、プロジェクトごとに 1.20.4 か 26.3 のどちらか向けに書き出す。
 
 ## 導入
 
@@ -84,7 +84,7 @@ Cube を持つ Group（Bone）を右クリックして「Rigel の Bone 設定�
 outliner の「display を追加」で、ブロック表示（block_display）・アイテム表示（item_display）・テキスト表示（text_display）を追加する。display は設定を持つ Group として作られ、Bone と同じようにキーフレームで動かせる。設定は、Group を右クリックして「display の設定」で変える。
 
 - ブロック：`minecraft:oak_stairs[facing=east]` の形で指定する。ブロックは Group の pivot を角にして、+x・+y・+z の向きへ伸びる。
-- アイテム：item の ID、tag、表示の型（`none`・`thirdperson_righthand` など）を指定する。アイテムの中心が Group の pivot に来る。
+- アイテム：item の ID、item のデータ（1.20.4 では tag、26.3 では components）、表示の型（`none`・`thirdperson_righthand` など）を指定する。アイテムの中心が Group の pivot に来る。
 - テキスト：文字か JSON のテキストと、行の幅・背景色・文字の不透明度・影・透けて見えるか・揃えを指定する。テキストは下辺の中央が Group の pivot に来て、+z 側から読める向きに置かれる。JSON のテキストに Minecraft が読めない値（色の名前の誤りなど）があると、Minecraft は文字を表示しない。そのため、設定の確定と書き出しのときに知らせる。
 - 拡大と追加の NBT（`brightness` など）も指定できる。追加の NBT に `id`・`UUID`・`Tags`・`Passengers`・`transformation`・`interpolation_duration`・`teleport_duration` は書けない。
 - display の Group には Cube を入れない。
@@ -129,14 +129,15 @@ Rigel Rig のプロジェクトで新しく作るアニメーションは、snap
 
 [blockbench-anim-ux](https://github.com/EllaCoat/blockbench-anim-ux) を一緒に読み込んでいても、Rigel Rig のプロジェクトでは anim-ux の同じ機能は出ない（anim-ux 0.11.0 以降）。
 
-### 書き出し（Minecraft 1.20.4）
+### 書き出し
 
 書き出しの設定は、File メニューの「Rigel のプロジェクト設定…」で決める。ダイアログの左の一覧で、次の 3 つのページを切り替える。
 
 | ページ | 項目 | 内容 |
 |---|---|---|
+| 一般 | 書き出し先の Minecraft | `1.20.4` か `26.3`。既定は `1.20.4`。書き出すファイルの違いは[版ごとの違い](#版ごとの違い)の表にある |
 | 一般 | リグ名 | 関数・偽プレイヤー・storage の名前になる。小文字・数字・`_` だけ。`core`・`const`・`warm`・`rigel` は使えない |
-| 一般 | 元の item | Bone の表示に使う item（例：`minecraft:white_dye`）。CustomModelData を付けて表示する |
+| 一般 | 元の item | Bone の表示に使う item（例：`minecraft:white_dye`）。1.20.4 では CustomModelData を、26.3 では item_model を付けて表示する |
 | 一般 | tp の補間 | リグを tp したときに、client が位置と向きを補間する tick 数（`teleport_duration`）。0〜59 で、既定は 1。0 だと向きはすぐ変わり、位置は 1 tick で移る。1 以上だと位置と向きをその tick 数で補間する。召喚時の tp の後で root と全 Bone に書くので、召喚時の tp には効かない |
 | 書き出し先 | データパックの置き場所 | ワールドの `datapacks` フォルダ |
 | 書き出し先 | リソースパック | 全リグで共有するリソースパックのフォルダ |
@@ -163,7 +164,9 @@ Rigel Rig のプロジェクトで新しく作るアニメーションは、snap
 - `datapacks/<リグ名>/`：そのリグのデータパック。
 - `datapacks/rigel/`：全リグで共有するデータパック。どのリグを書き出しても同じ内容になる。
 - リソースパックの `assets/rigel/models/<リグ名>/` と `assets/rigel/textures/item/<リグ名>/`：Bone のモデルとテクスチャ。variant のモデルは `assets/rigel/models/<リグ名>/<variant 名>/` に、元のモデルを親にしてテクスチャだけを差し替えた形で書く。
-- 元の item のモデル（`assets/minecraft/models/item/<item>.json` など）：このリグの overrides だけを入れ替える。ほかのリグや、元からある overrides は残す。ファイルが無いときは、平らなアイテムのモデルとして作る。
+- 元の item のモデル（`assets/minecraft/models/item/<item>.json` など）：1.20.4 だけ。このリグの overrides だけを入れ替える。ほかのリグや、元からある overrides は残す。ファイルが無いときは、平らなアイテムのモデルとして作る。
+- `assets/rigel/items/<リグ名>/`：26.3 だけ。モデルごとの item の定義で、Bone の item の `item_model` がこれを指す。26.3 では元の item のモデルを書き換えない。
+- リソースパックの `pack.mcmeta`：無いときと、1.20.4 だけに書き出していた版の Rigel が作ったまま変わっていないときに作る。公式ランチャーはどの版の Minecraft でも同じ `resourcepacks` フォルダを使うので、書き出し先の版によらず、1.20.4 と 26.3 の両方で読める形で作る。ほかの `pack.mcmeta` は書き換えない。
 
 データパックのフォルダは、空のときか、Rigel が書き出した印（`rigel.json`）があるときだけ作り直す。リソースパックの直下の `rigel.json` には、リグ名ごとに、書き出したプロジェクトの固有 ID を残す。同じリグ名で別のプロジェクトが書き出していたら、置き換えるかを尋ねてから書き出す。Blockbench で非表示にした Cube も書き出し、Export を切った Cube と Bone は書き出さない。
 
@@ -224,6 +227,24 @@ tween は、再生中・pause 中・止まっている間のどこからでも�
 - variant の keyframe がある tick では、その variant が書き込む Bone の区間を直前で区切り、その tick から次の区間を書き込む。client は、アイテムが替わると補間を表示中の姿勢からやり直すが、区間の進み具合は引き継ぐ。区間の途中でアイテムが替わると、Bone の動きが一瞬ずれるからだ。すでに止まっている Bone は書き込まない。区間を区切るぶん、その Bone の書き込みは増える。
 - 区間の途中のフレームへ tween すると、その区間で動いている Bone には、着いた tick に区間の残りを書く。そのため、着いた後も、play したときと同じ tick に区間の終わりへ着く。
 - 区間の終わりのフレーム番号は Bone の `PortalCooldown` に入れ、restart はこれで区間の残りの tick を求める。`PortalCooldown` は display entity の動きに関わらない。
+
+#### 版ごとの違い
+
+呼び出しと動きはどちらの版も同じで、書き出すファイルの形だけが違う。
+
+| 項目 | 1.20.4 | 26.3 |
+|---|---|---|
+| Cube の回転 | 1 軸だけで、-45・-22.5・22.5・45 度 | 好きな角度で、2 軸以上にも回せる |
+| Bone のモデルの指定 | CustomModelData と、元の item のモデルの overrides | `item_model` と、`assets/rigel/items/` の item の定義 |
+| variant でのモデルの差し替え | `data merge entity` で item の tag を書き換える | `item replace entity <Bone> contents` で item を置き換える |
+| display の item のデータ | tag（例：`{CustomModelData:1}`） | components（例：`{"minecraft:custom_model_data":{floats:[1f]}}`） |
+| text_display のテキスト | JSON のまま書く | 同じ JSON のテキストを SNBT にして書く |
+| block_display のブロック | `{Name, Properties}` | `{id, properties}` |
+| 関数のフォルダ | `functions/` | `function/` |
+| データパックの `pack.mcmeta` | `pack_format` 26 | `min_format`・`max_format` 121 |
+
+- Blockbench での Cube の回転の制限は、プロジェクトの版に合わせて切り替わる。26.3 で付けた回転が残ったまま版を 1.20.4 に戻すと、書き出すときに、1.20.4 で使えない回転の Cube を知らせる。
+- 追加の NBT は、書き出し先の版で通じる形で指定する。Rigel は中身を版に合わせて書き換えない。
 
 #### 書き出しの制限
 

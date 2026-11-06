@@ -1,6 +1,7 @@
 import type { Vec3 } from '../bake/matrix'
 import { isRigelProject } from '../easing/keyframes'
 import { displayProblems } from '../export/display'
+import { projectVersion } from '../export/settings'
 import { ITEM_DISPLAY_MODES, TEXT_ALIGNMENTS, type DisplaySettings, type ItemDisplayMode, type TextAlignment } from '../export/types'
 import { refreshDisplayPreview } from './preview'
 import { DEFAULT_BACKGROUND, defaultDisplay, readDisplay, writeDisplay, type DisplayKind } from './settings'
@@ -45,6 +46,8 @@ function openDisplayDialog(target: { edit: Group } | { parent: Group | undefined
 	const textDefaults = defaultDisplay('text') as Extract<DisplaySettings, { kind: 'text' }>
 	const itemDefaults = defaultDisplay('item') as Extract<DisplaySettings, { kind: 'item' }>
 	const is = (kind: DisplayKind) => (form: FormResult) => form.kind === kind
+	// The item's own data: 1.20.4's tag, 26.3's components.
+	const itemData = projectVersion(Project!) === '26.3' ? { label: 'item の components', placeholder: '{"minecraft:custom_model_data":{floats:[1f]}}' } : { label: 'item の tag', placeholder: '{CustomModelData:1}' }
 	dialog?.delete()
 	dialog = new Dialog({
 		id: EDIT_ID,
@@ -55,7 +58,7 @@ function openDisplayDialog(target: { edit: Group } | { parent: Group | undefined
 			name: { label: '名前', type: 'text', value: editing?.name ?? 'display', description: 'タグ rigel.<リグ名>.<名前> に使います。' },
 			block: { label: 'ブロック', type: 'text', value: value('block', 'block', 'minecraft:stone'), placeholder: 'minecraft:oak_stairs[facing=east]', condition: is('block') },
 			item: { label: 'item', type: 'text', value: value('item', 'item', itemDefaults.item), condition: is('item') },
-			tag: { label: 'item の tag', type: 'text', value: value('item', 'tag', ''), placeholder: '{CustomModelData:1}', condition: is('item') },
+			tag: { ...itemData, type: 'text', value: value('item', 'tag', ''), condition: is('item') },
 			mode: {
 				label: '表示の型',
 				type: 'select',

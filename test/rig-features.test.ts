@@ -2,10 +2,11 @@ import { describe, expect, test } from 'bun:test'
 import type { Vec3 } from '../src/bake/matrix'
 import { buildExport, ExportError } from '../src/export/build'
 import { blockStateNbt, boneNbtProblems, displayNbt, snbtProblem, textJson, topLevelKeys } from '../src/export/display'
+import { targetOf } from '../src/export/target'
 import { DEFAULT_TOLERANCE } from '../src/export/settings'
 import type { AnimationSource, BoneSource, DisplaySettings, Files, RigSettings, RigSource, TextureSource } from '../src/export/types'
 
-const settings: RigSettings = { rig: 'axia', id: 0x1a2b3c4d, item: 'minecraft:white_dye', chunkLines: 500, span: 20, teleportDuration: 1 }
+const settings: RigSettings = { version: '1.20.4', rig: 'axia', id: 0x1a2b3c4d, item: 'minecraft:white_dye', chunkLines: 500, span: 20, teleportDuration: 1 }
 const identity = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
 const fn = (path: string) => `data/rigel/functions/axia/${path}.mcfunction`
 const lines = (files: Files, path: string) => {
@@ -79,7 +80,7 @@ describe('variant', () => {
 			textures: { '2': 'rigel:item/axia/eye_closed', particle: 'rigel:item/axia/eye_closed' },
 		})
 		expect(result.resources.has('assets/rigel/models/axia/blink/body.json')).toBe(false)
-		expect(JSON.parse(result.itemModel.json).overrides.map((o: { model: string }) => o.model)).toEqual(['rigel:axia/body', 'rigel:axia/head', 'rigel:axia/blink/head', 'rigel:axia/dark/body'])
+		expect(JSON.parse(result.resources.get('assets/minecraft/models/item/white_dye.json') as string).overrides.map((o: { model: string }) => o.model)).toEqual(['rigel:axia/body', 'rigel:axia/head', 'rigel:axia/blink/head', 'rigel:axia/dark/body'])
 	})
 
 	test('a variant writes every bone some variant changes, except the ones it excludes, then calls its function', () => {
@@ -248,9 +249,9 @@ describe('display', () => {
 	const block: DisplaySettings = { ...common, kind: 'block', block: 'oak_stairs[facing=east, half=top]' }
 
 	test('settings become the summon keys', () => {
-		expect(displayNbt(item)).toBe('id:"minecraft:item_display",item:{id:"minecraft:iron_axe",Count:1b,tag:{CustomModelData:5}},item_display:"thirdperson_righthand",brightness:{block:15,sky:15}')
-		expect(displayNbt(block)).toBe('id:"minecraft:block_display",block_state:{Name:"minecraft:oak_stairs",Properties:{facing:"east",half:"top"}}')
-		expect(displayNbt(text)).toBe(
+		expect(displayNbt(item, targetOf('1.20.4'))).toBe('id:"minecraft:item_display",item:{id:"minecraft:iron_axe",Count:1b,tag:{CustomModelData:5}},item_display:"thirdperson_righthand",brightness:{block:15,sky:15}')
+		expect(displayNbt(block, targetOf('1.20.4'))).toBe('id:"minecraft:block_display",block_state:{Name:"minecraft:oak_stairs",Properties:{facing:"east",half:"top"}}')
+		expect(displayNbt(text, targetOf('1.20.4'))).toBe(
 			`id:"minecraft:text_display",text:'"It\\'s"',line_width:120,background:${0x80ff0000 | 0},text_opacity:-56b,alignment:"left",shadow:1b,see_through:0b,default_background:0b`,
 		)
 	})
@@ -258,7 +259,7 @@ describe('display', () => {
 	test('text that is not JSON becomes a JSON string, and JSON is kept', () => {
 		expect(textJson('hello')).toBe('"hello"')
 		expect(textJson('{"text":"a", "color":"red"}')).toBe('{"text":"a","color":"red"}')
-		expect(blockStateNbt('stone[bad]')).toBeUndefined()
+		expect(blockStateNbt('stone[bad]', targetOf('1.20.4'))).toBeUndefined()
 	})
 
 	test('plain text that reads as a JSON number, true, false or null stays the text as written', () => {
@@ -326,5 +327,80 @@ describe('bone settings', () => {
 	test("a display group's own NBT is used, not a bone's", () => {
 		const group = { ...bone('Ice', undefined, { scale: [1, 1, 1], nbt: '', kind: 'block', block: 'ice' }), nbt: '{PortalCooldown:3}' }
 		expect(problems(rig({ bones: [bone('Body', 0), group] }))).toEqual([])
+	})
+})
+
+describe('26.3', () => {
+	const v26: RigSettings = { ...settings, version: '26.3' }
+	const fn26 = (path: string) => `data/rigel/function/axia/${path}.mcfunction`
+	const source = rig({
+		bones: [bone('Body', 0), bone('Head', 2)],
+		textures: [texture('skin', 32), texture('skin_alt', 32), texture('eye', 16), texture('eye_closed', 16)],
+		variants: [{ name: 'blink', textures: [[2, 3]], excluded: [], onApply: '' }],
+	})
+	const result = buildExport(source, v26, undefined)
+
+	test('functions and function tags are under function/, and pack.mcmeta takes the 26.3 data format', () => {
+		expect([...result.rigPack.keys()]).toContain(fn26('play'))
+		expect([...result.rigPack.keys(), ...result.commonPack.keys()].some((k) => k.includes('/functions/'))).toBe(false)
+		expect(JSON.parse(result.rigPack.get('data/minecraft/tags/function/tick.json') as string)).toEqual({ values: ['rigel:axia/tick'] })
+		expect(JSON.parse(result.rigPack.get('pack.mcmeta') as string)).toEqual({ pack: { min_format: 121, max_format: 121, description: 'rigel: axia' } })
+		expect(JSON.parse(result.commonPack.get('pack.mcmeta') as string).pack.max_format).toBe(121)
+		expect([...result.commonPack.keys()]).toContain('data/rigel/function/core/tick.mcfunction')
+	})
+
+	test('a bone names its model with item_model, and every model has an item definition of the same ID', () => {
+		const spawn = lines(result.rigPack, fn26('spawn'))[1]!
+		expect(spawn).toContain('item:{id:"minecraft:white_dye",count:1,components:{"minecraft:item_model":"rigel:axia/body"}}')
+		expect(spawn).toContain('item:{id:"minecraft:white_dye",count:1,components:{"minecraft:item_model":"rigel:axia/head"}}')
+		expect([...result.resources.keys()].filter((k) => k.startsWith('assets/rigel/items/'))).toEqual(['assets/rigel/items/axia/body.json', 'assets/rigel/items/axia/head.json', 'assets/rigel/items/axia/blink/head.json'])
+		expect(result.resources.get('assets/rigel/items/axia/blink/head.json')).toBe('{"model":{"type":"minecraft:model","model":"rigel:axia/blink/head"}}\n')
+		expect([...result.resources.keys()].some((k) => k.startsWith('assets/minecraft/'))).toBe(false)
+	})
+
+	test('tp moves only the root, which turns its passengers with it', () => {
+		expect(lines(result.rigPack, fn26('tp'))).toEqual(['tp 1a2b3c4d-0-0-0-0 ~ ~ ~ ~ ~'])
+		expect(lines(buildExport(source, settings, undefined).rigPack, fn('tp'))).toEqual(['tp 1a2b3c4d-0-0-0-0 ~ ~ ~ ~ ~', 'execute as 1a2b3c4d-0-0-0-0 on passengers run tp @s ~ ~ ~ ~ ~'])
+	})
+
+	test('a variant replaces the item in the bone entity slot', () => {
+		const root = 'execute unless entity 1a2b3c4d-0-0-0-0 run return fail'
+		const replace = (n: number, model: string) => `item replace entity 1a2b3c4d-0-0-0-${n} contents with minecraft:white_dye[item_model="${model}"]`
+		expect(lines(result.rigPack, fn26('variant/blink'))).toEqual([root, replace(2, 'rigel:axia/blink/head')])
+		expect(lines(result.rigPack, fn26('variant/default'))).toEqual([root, replace(2, 'rigel:axia/head')])
+	})
+
+	test('a cube turns at any angle on one axis, and on more with x, y and z; 1.20.4 rejects both', () => {
+		const turned = (rotation: Vec3): BoneSource => ({ ...bone('Arm', 0), cubes: [{ ...bone('Arm', 0).cubes[0]!, rotation }] })
+		const rotationOf = (rotation: Vec3) =>
+			JSON.parse(buildExport(rig({ bones: [turned(rotation)] }), v26, undefined).resources.get('assets/rigel/models/axia/arm.json') as string).elements[0].rotation
+		expect(rotationOf([0, 30, 0])).toEqual({ angle: 30, axis: 'y', origin: [8, 8, 8] })
+		expect(rotationOf([10, -20, 75])).toEqual({ origin: [8, 8, 8], x: 10, y: -20, z: 75 })
+		expect(problems(rig({ bones: [turned([0, 30, 0])] }))).toHaveLength(1)
+		expect(problems(rig({ bones: [turned([10, -20, 75])] }))).toHaveLength(1)
+	})
+
+	test('an item display writes count and components, and text is SNBT', () => {
+		const t = targetOf('26.3')
+		const common = { scale: [1, 1, 1] as Vec3, nbt: '' }
+		const item: DisplaySettings = { ...common, kind: 'item', item: 'iron_axe', tag: '{"minecraft:custom_model_data":{floats:[1f]}}', mode: 'fixed' }
+		expect(displayNbt(item, t)).toBe('id:"minecraft:item_display",item:{id:"minecraft:iron_axe",count:1,components:{"minecraft:custom_model_data":{floats:[1f]}}},item_display:"fixed"')
+		expect(displayNbt({ ...item, tag: '' }, t)).toContain('item:{id:"minecraft:iron_axe",count:1}')
+		expect(t.text('{"text":"a\\nb","bold":true,"extra":["c",{"text":"d","color":"red"}],"shadow_color":-1}')).toBe('{"text":"a\\nb","bold":true,"extra":["c",{"text":"d","color":"red"}],"shadow_color":-1}')
+		expect(t.text('say "hi"\\')).toBe('"say \\"hi\\"\\\\"')
+		expect(t.text('1.50')).toBe('"1.50"')
+		expect(t.text('{"text":"\\u0001\\t"}')).toBe('{"text":"\\u0001\\t"}')
+	})
+
+	test('a block display writes the block ID and lowercase properties', () => {
+		const t = targetOf('26.3')
+		const block: DisplaySettings = { scale: [1, 1, 1], nbt: '', kind: 'block', block: 'oak_stairs[facing=east, half=top]' }
+		expect(displayNbt(block, t)).toBe('id:"minecraft:block_display",block_state:{id:"minecraft:oak_stairs",properties:{facing:"east",half:"top"}}')
+		expect(displayNbt({ ...block, block: 'minecraft:ice' }, t)).toBe('id:"minecraft:block_display",block_state:{id:"minecraft:ice"}')
+	})
+
+	test('a version Rigel cannot write for is reported', () => {
+		expect(problems({ ...source })).toEqual([])
+		expect(() => buildExport(source, { ...settings, version: '1.21' as never }, undefined)).toThrow(ExportError)
 	})
 })

@@ -1,4 +1,5 @@
 import { planChunks, type FrameWrite, type Poses, type WarmItem } from './frames'
+import type { Target } from './target'
 import { WARM_PRIORITIES, type Files, type Loop, type WarmPriority } from './types'
 
 export const NAMESPACE = 'rigel'
@@ -9,7 +10,6 @@ export const RESERVED_RIG_NAMES = ['core', 'const', 'warm', COMMON_PACK]
 // writes it first, so a folder cut short by a failed write can still be replaced next time.
 export const MARKER = 'rigel.json'
 
-const PACK_FORMAT = 26
 const OBJECTIVES = ['Rigel.Frame', 'Rigel.Playing', 'Rigel.PlayedAt', 'Rigel.Warming', 'Rigel.Temp', 'Rigel.Wait']
 const FRAME_ARGS = 'rigel:const FrameArgs'
 const LIST: Record<WarmPriority, string> = { xhigh: 'XHigh', high: 'High', low: 'Low' }
@@ -20,9 +20,15 @@ const HOLD = 1_000_000_000
 // replays its last interpolation when its pose stays the same.
 const TWEEN_SHADOWS = ['.998f', '.997f'] as const
 
-const fn = (path: string) => `data/${NAMESPACE}/functions/${path}.mcfunction`
+const fn = (target: Target, path: string) => `data/${NAMESPACE}/${target.functions}/${path}.mcfunction`
 const json = (value: unknown) => `${JSON.stringify(value, null, '\t')}\n`
 const text = (lines: string[]) => `${lines.join('\n')}\n`
+
+function packFiles(target: Target, files: Files, description: string, load: string, tick: string): void {
+	files.set('pack.mcmeta', json({ pack: { ...target.dataPack, description } }))
+	files.set(`data/minecraft/tags/${target.functions}/load.json`, json({ values: [load] }))
+	files.set(`data/minecraft/tags/${target.functions}/tick.json`, json({ values: [tick] }))
+}
 
 export const hexId = (id: number) => (id >>> 0).toString(16).padStart(8, '0')
 
@@ -57,13 +63,16 @@ export interface LocatorInput {
 
 export interface VariantInput {
 	name: string
-	// Passenger indices and the CustomModelData each gets.
-	writes: { passenger: number; cmd: number }[]
+	// Passenger indices and the model each gets, as Target.setBoneModel takes it.
+	writes: { passenger: number; model: string }[]
 	onApply: string
 }
 
 export interface RigPackInput {
+	target: Target
 	rig: string
+	// The item bones are drawn with.
+	item: string
 	id: number
 	chunkLines: number
 	teleportDuration: number
@@ -93,7 +102,8 @@ export function rigPack(p: RigPackInput): Files {
 	const root = uuidString(p.id, 0)
 	const bone = (b: number) => uuidString(p.id, b + 1)
 	const id = (path: string) => `${NAMESPACE}:${p.rig}/${path}`
-	const write = (path: string, lines: string[]) => files.set(fn(`${p.rig}/${path}`), text(lines))
+	const write = (path: string, lines: string[]) => files.set(fn(p.target, `${p.rig}/${path}`), text(lines))
+	const setModel = (w: VariantInput['writes'][number]) => p.target.setBoneModel(bone(w.passenger), p.item, w.model)
 	const warmingCheck = `execute if score ${self} Rigel.Warming matches 1 run return 0`
 	// f/0 restores the shadow_strength stop, pause and tween change, and the interpolation length a tween or
 	// restart leaves. PortalCooldown keeps the frame a run ends at for restart; display entities neither count it down nor send it.
@@ -120,9 +130,7 @@ export function rigPack(p: RigPackInput): Files {
 	}
 
 	files.set(MARKER, json({ generator: 'rigel', rig: p.rig, id: hexId(p.id) }))
-	files.set('pack.mcmeta', json({ pack: { pack_format: PACK_FORMAT, description: `rigel: ${p.rig}` } }))
-	files.set('data/minecraft/tags/functions/load.json', json({ values: [id('load')] }))
-	files.set('data/minecraft/tags/functions/tick.json', json({ values: [id('tick')] }))
+	packFiles(p.target, files, `rigel: ${p.rig}`, id('load'), id('tick'))
 
 	// f/0 of every animation is warmed first within a priority: play writes it on the tick it is called.
 	const heads: Record<WarmPriority, WarmItem[]> = { xhigh: [], high: [], low: [] }
@@ -254,7 +262,7 @@ export function rigPack(p: RigPackInput): Files {
 	write('tween/blend', [`$execute as ${root} on passengers run data merge entity @s {PortalCooldown:$(frame),interpolation_duration:$(ticks),start_interpolation:0,shadow_strength:$(shadow)}`])
 	write('tween/arrive', [`scoreboard players set ${self} Rigel.Wait 0`, `$function ${id('tween')}/$(Animation)/arrive`])
 	const onApply = new Set(p.variants.filter((v) => v.onApply).map((v) => v.name))
-	for (const v of p.variants) if (onApply.has(v.name)) write(`tween/quiet/${v.name}`, v.writes.map((w) => `data merge entity ${bone(w.passenger)} {item:{tag:{CustomModelData:${w.cmd}}}}`))
+	for (const v of p.variants) if (onApply.has(v.name)) write(`tween/quiet/${v.name}`, v.writes.map(setModel))
 	p.animations.forEach((animation, a) => {
 		const last = animation.frames.length - 1
 		const looping = animation.loop === 'loop' && last > 0
@@ -316,10 +324,9 @@ export function rigPack(p: RigPackInput): Files {
 		`function ${id('teleport_duration')} {duration:${p.teleportDuration}}`,
 		`scoreboard players set ${self} Rigel.Playing 0`,
 	])
-	// Passengers move with the root; their facing is their own. Locator entities ride nothing, so they are placed again.
+	// Locator entities ride nothing, so they are placed again.
 	write('tp', [
-		`tp ${root} ~ ~ ~ ~ ~`,
-		`execute as ${root} on passengers run tp @s ~ ~ ~ ~ ~`,
+		...p.target.tp(root),
 		...entityLocators.map((l) => `function ${id(`locator/${l.name}/place`)} with storage ${storage} Locators.${l.name}`),
 	])
 	write('teleport_duration', [
@@ -342,7 +349,7 @@ export function rigPack(p: RigPackInput): Files {
 	for (const v of p.variants)
 		write(`variant/${v.name}`, [
 			`execute unless entity ${root} run return fail`,
-			...v.writes.map((w) => `data merge entity ${bone(w.passenger)} {item:{tag:{CustomModelData:${w.cmd}}}}`),
+			...v.writes.map(setModel),
 			...(v.onApply ? [`function ${v.onApply}`] : []),
 		])
 
@@ -357,13 +364,11 @@ export function rigPack(p: RigPackInput): Files {
 	return files
 }
 
-export function commonPack(): Files {
+export function commonPack(target: Target): Files {
 	const files: Files = new Map()
-	const write = (path: string, lines: string[]) => files.set(fn(path), text(lines))
+	const write = (path: string, lines: string[]) => files.set(fn(target, path), text(lines))
 	files.set(MARKER, json({ generator: 'rigel', common: true }))
-	files.set('pack.mcmeta', json({ pack: { pack_format: PACK_FORMAT, description: 'rigel: common' } }))
-	files.set('data/minecraft/tags/functions/load.json', json({ values: ['rigel:core/load'] }))
-	files.set('data/minecraft/tags/functions/tick.json', json({ values: ['rigel:core/tick'] }))
+	packFiles(target, files, 'rigel: common', 'rigel:core/load', 'rigel:core/tick')
 	write('core/load', [...objectives(), `data modify storage ${FRAME_ARGS} set value {_:",0f,0f,0f,1f],start_interpolation:0}"}`])
 	write('core/tick', [
 		'execute unless score $Rigel.Warm Rigel.Warming matches 1 run return 0',

@@ -1,6 +1,7 @@
 import { buildExport, ExportError } from './build'
-import { COMMON_PACK, hexId, MARKER } from './datapack'
-import { itemModelPath, packMeta } from './resource-pack'
+import { COMMON_PACK, hexId, MARKER, NAMESPACE } from './datapack'
+import { OLD_PACK_META, packMeta } from './resource-pack'
+import { isGameVersion, targetOf } from './target'
 import type { Files, RigSettings, RigSource } from './types'
 
 // The part of node:fs the export uses; Blockbench's scoped fs has the same shape.
@@ -71,8 +72,9 @@ export interface ExportSummary {
 
 export async function exportRig(target: ExportTarget, source: RigSource, settings: RigSettings, options: ExportOptions = {}): Promise<ExportSummary> {
 	const { fs: rp, dir: rpDir } = target.resourcePack
-	const itemFile = join(rpDir, itemModelPath(settings.item))
-	const result = buildExport(source, settings, rp.existsSync(itemFile) ? rp.readFileSync(itemFile, 'utf8') : undefined)
+	const shared = isGameVersion(settings.version) ? targetOf(settings.version).sharedModelFile(settings.item) : undefined
+	const sharedFile = shared && join(rpDir, shared)
+	const result = buildExport(source, settings, sharedFile && rp.existsSync(sharedFile) ? rp.readFileSync(sharedFile, 'utf8') : undefined)
 
 	const { fs: dp, dir: dpDir } = target.datapacks
 	const rigDir = join(dpDir, settings.rig)
@@ -102,15 +104,14 @@ export async function exportRig(target: ExportTarget, source: RigSource, setting
 	writeFiles(dp, rigDir, result.rigPack)
 	writeFiles(dp, commonDir, result.commonPack)
 
-	await rp.promises.rm(join(rpDir, `assets/rigel/models/${settings.rig}`), { recursive: true, force: true })
-	await rp.promises.rm(join(rpDir, `assets/rigel/textures/item/${settings.rig}`), { recursive: true, force: true })
+	for (const dir of ['models', 'items', 'textures/item']) await rp.promises.rm(join(rpDir, `assets/${NAMESPACE}/${dir}/${settings.rig}`), { recursive: true, force: true })
 	rigs.set(settings.rig, id)
 	const owners = Object.fromEntries([...rigs].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
 	// The marker goes first, like the data packs' markers.
 	const resources: Files = new Map([[MARKER, `${JSON.stringify({ ...(rpMarker as Marker), rigs: owners }, null, '\t')}\n`]])
 	for (const [path, content] of result.resources) resources.set(path, content)
-	resources.set(result.itemModel.path, result.itemModel.json)
-	if (!rp.existsSync(join(rpDir, 'pack.mcmeta'))) resources.set('pack.mcmeta', packMeta())
+	const meta = join(rpDir, 'pack.mcmeta')
+	if (!rp.existsSync(meta) || rp.readFileSync(meta, 'utf8') === OLD_PACK_META) resources.set('pack.mcmeta', packMeta)
 	writeFiles(rp, rpDir, resources)
 
 	return { rigPack: rigDir, commonPack: commonDir, files: result.rigPack.size + result.commonPack.size + resources.size, writes: result.writes }

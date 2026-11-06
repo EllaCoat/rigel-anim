@@ -1,5 +1,5 @@
 // Exports the synthetic rig (synthetic-rig.ts) from the development Blockbench and checks the data packs on
-// a 1.20.4 server: they load without errors, the calls behave as designed, every tick of every animation
+// the benchmark server of bench/target.ts (1.20.4 or 26.3, by RIGEL_BENCH_MC): they load without errors, the calls behave as designed, every tick of every animation
 // leaves each bone at the pose Blockbench sampled and holds the variant its keyframes have applied by then,
 // and two rigs warm one chunk per tick, by priority. A third,
 // thinned rig (all animations but `eased`) is checked against its planned writes: each bone holds the end of its
@@ -16,6 +16,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, promises, readdirSync, read
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { SERVER_DIR, Server } from '../bench/mc'
+import { TARGET } from '../bench/target'
 import { compose, type Quat, type Vec3 } from '../src/bake/matrix'
 import { uuidString } from '../src/export/datapack'
 import { displayPoseString, planFrames, poseString, type FrameWrite } from '../src/export/frames'
@@ -23,12 +24,17 @@ import { toleranceOf, uniqueName } from '../src/export/build'
 import { boneScale } from '../src/export/item-model'
 import { animationRunEnds } from '../src/export/thin'
 import { variantCalls, variantCuts } from '../src/export/variant-keys'
+import { blockStateNbt } from '../src/export/display'
+import { GAME_VERSIONS, isGameVersion, targetOf } from '../src/export/target'
 import type { AnimationSource, RigSettings, RigSource } from '../src/export/types'
 import { exportRig, type ExportFs } from '../src/export/write'
 import { blockbenchRunning, devBlockbench, evaluate, useFonts } from './devtools'
 import { syntheticFontPack, syntheticRig } from './synthetic-rig'
 
 const WORLD_NAME = 'export-check'
+const targetVersion = TARGET.version
+if (!isGameVersion(targetVersion)) throw new Error(`Rigel writes for ${GAME_VERSIONS.join(' and ')}, not RIGEL_BENCH_MC=${targetVersion}`)
+const VERSION = targetVersion
 // tween calls whose commands are counted: the first frame, and the last of once and of eased, which writes every bone it moves on every frame.
 const COST_CASES = [
 	['curves', 0],
@@ -101,13 +107,13 @@ function variantPlan(source: RigSource, a: number): Map<number, string> {
 	return variantCalls(animation.loop, animation.ticks, animation.variantKeys.flatMap((k) => (k.variant === null ? [] : [{ time: k.time, variant: k.variant }])))
 }
 
-// The entities and the CustomModelData a variant function of a rig writes.
-function variantWrites(world: string, rig: string, name: string): { uuid: string; cmd: number }[] {
-	return readFileSync(join(world, 'datapacks', rig, 'data/rigel/functions', rig, 'variant', `${name}.mcfunction`), 'utf8')
+// The entities and the model (1.20.4's CustomModelData, 26.3's item model) a variant function of a rig writes.
+function variantWrites(world: string, rig: string, name: string): { uuid: string; model: string }[] {
+	return readFileSync(join(world, 'datapacks', rig, `data/rigel/${TARGET.functions}`, rig, 'variant', `${name}.mcfunction`), 'utf8')
 		.split('\n')
 		.flatMap((l) => {
-			const m = /^data merge entity (\S+) \{item:\{tag:\{CustomModelData:(\d+)\}\}\}$/.exec(l)
-			return m ? [{ uuid: m[1]!, cmd: Number(m[2]) }] : []
+			const m = /^data merge entity (\S+) \{item:\{tag:\{CustomModelData:(\d+)\}\}\}$/.exec(l) ?? /^item replace entity (\S+) contents with \S+\[item_model="([^"]+)"\]$/.exec(l)
+			return m ? [{ uuid: m[1]!, model: m[2]! }] : []
 		})
 }
 
@@ -136,22 +142,22 @@ function thinnedPlans(source: RigSource, settings: RigSettings, rewritten: (vari
 	})
 }
 
-// The CustomModelData each model bone should hold after the variants applied so far.
+// The model each model bone should hold after the variants applied so far.
 class VariantState {
-	private cmds: Record<string, number>
+	private models: Record<string, string>
 	constructor(
-		base: Record<string, number>,
-		private readonly writes: (variant: string) => { uuid: string; cmd: number }[],
+		base: Record<string, string>,
+		private readonly writes: (variant: string) => { uuid: string; model: string }[],
 	) {
-		this.cmds = { ...base }
+		this.models = { ...base }
 	}
 
 	apply(variant: string | undefined): void {
-		if (variant) for (const w of this.writes(variant)) this.cmds[w.uuid] = w.cmd
+		if (variant) for (const w of this.writes(variant)) this.models[w.uuid] = w.model
 	}
 
-	get want(): Readonly<Record<string, number>> {
-		return this.cmds
+	get want(): Readonly<Record<string, string>> {
+		return this.models
 	}
 }
 
@@ -192,7 +198,7 @@ class Check {
 	}
 
 	async gametime(): Promise<number> {
-		return Number((await this.server.run('time query gametime', /The time is (\d+)/))[1])
+		return Number((await this.server.run('time query gametime', /The (?:game )?time is (\d+)/))[1])
 	}
 
 	// Runs n ticks of a frozen server and waits until they have run.
@@ -239,11 +245,12 @@ class Check {
 		return { matrix: rebuilt(nbt), duration: number('interpolation_duration'), cooldown: number('PortalCooldown'), shadow: number('shadow_strength') }
 	}
 
-	// The CustomModelData of each entity, one query at a time: the console answers in order, and concurrent queries
+	// The model each entity's item names, one query at a time: the console answers in order, and concurrent queries
 	// would read each other's lines.
-	async cmds(uuids: string[]): Promise<Record<string, number>> {
-		const out: Record<string, number> = {}
-		for (const uuid of uuids) out[uuid] = Number(await this.entity(uuid, 'item.tag.CustomModelData'))
+	async modelsOf(uuids: string[]): Promise<Record<string, string>> {
+		const path = TARGET.version === '1.20.4' ? 'item.tag.CustomModelData' : 'item.components."minecraft:item_model"'
+		const out: Record<string, string> = {}
+		for (const uuid of uuids) out[uuid] = (await this.entity(uuid, path))?.replace(/^"|"$/g, '') ?? 'none'
 		return out
 	}
 
@@ -276,16 +283,18 @@ function local(anchor: number[], yaw: number, pitch: number, [x, y, z]: number[]
 // The functions variant and at_locator are checked with.
 function writeCheckPack(datapacks: string): void {
 	const dir = join(datapacks, 'check')
-	mkdirSync(join(dir, 'data/check/functions'), { recursive: true })
-	writeFileSync(join(dir, 'pack.mcmeta'), JSON.stringify({ pack: { pack_format: 26, description: 'export-check' } }))
-	writeFileSync(join(dir, 'data/check/functions/applied.mcfunction'), 'scoreboard players add $Applied Rigel.Temp 1\n')
-	writeFileSync(join(dir, 'data/check/functions/mark.mcfunction'), 'summon marker ~ ~ ~ {Tags:["check.mark"]}\n')
+	const functions = join(dir, 'data/check', TARGET.functions)
+	mkdirSync(functions, { recursive: true })
+	writeFileSync(join(dir, 'pack.mcmeta'), JSON.stringify({ pack: { ...(TARGET.packMeta as { pack: object }).pack, description: 'export-check' } }))
+	writeFileSync(join(functions, 'applied.mcfunction'), 'scoreboard players add $Applied Rigel.Temp 1\n')
+	writeFileSync(join(functions, 'mark.mcfunction'), 'summon marker ~ ~ ~ {Tags:["check.mark"]}\n')
 	// For screenshots: a small lit cube centred on the locator, and a burst of particles there.
 	writeFileSync(
-		join(dir, 'data/check/functions/shot_marker.mcfunction'),
+		join(functions, 'shot_marker.mcfunction'),
 		[
-			'summon block_display ~ ~ ~ {Tags:["check.shot"],block_state:{Name:"minecraft:redstone_block"},brightness:{block:15,sky:15},transformation:{left_rotation:[0f,0f,0f,1f],right_rotation:[0f,0f,0f,1f],translation:[-0.06f,-0.06f,-0.06f],scale:[0.12f,0.12f,0.12f]}}',
-			'particle minecraft:dust 1 0.2 0.2 1.5 ~ ~ ~ 0.03 0.03 0.03 0 12 force',
+			`summon block_display ~ ~ ~ {Tags:["check.shot"],block_state:${blockStateNbt('minecraft:redstone_block', targetOf(VERSION))},brightness:{block:15,sky:15},transformation:{left_rotation:[0f,0f,0f,1f],right_rotation:[0f,0f,0f,1f],translation:[-0.06f,-0.06f,-0.06f],scale:[0.12f,0.12f,0.12f]}}`,
+			// 1.20.5 moved the dust options into SNBT.
+			`particle ${VERSION === '1.20.4' ? 'minecraft:dust 1 0.2 0.2 1.5' : 'minecraft:dust{color:[1f,0.2f,0.2f],scale:1.5f}'} ~ ~ ~ 0.03 0.03 0.03 0 12 force`,
 			'',
 		].join('\n'),
 	)
@@ -304,15 +313,15 @@ async function main(): Promise<void> {
 	const shotsAt = args.indexOf('--shots')
 	const shots = shotsAt >= 0 ? resolve(args[shotsAt + 1] ?? '') : undefined
 
-	const model = syntheticRig()
+	const model = syntheticRig(VERSION)
 	const source = await collectSynthetic(model)
 	// Priorities that exercise the order: 'once' first, 'squash' last.
 	source.animations.forEach((a) => (a.priority = a.name === 'once' ? 'xhigh' : a.name === 'squash' ? 'low' : 'high'))
 	source.animations.find((a) => a.name === 'eased')!.thin = 'off'
 	const rigs: RigSettings[] = [
-		{ rig: 'synthetic', id: 0x5e17e000, item: 'minecraft:white_dye', chunkLines: 20, span: 20, teleportDuration: 1 },
-		{ rig: 'twin', id: 0x7e1a0001, item: 'minecraft:white_dye', chunkLines: 20, span: 20, teleportDuration: 1 },
-		{ rig: 'thinned', id: 0x7e1a0002, item: 'minecraft:white_dye', chunkLines: 20, span: 20, teleportDuration: 1, thin: { position: 0.01, rotation: 1 } },
+		{ version: VERSION, rig: 'synthetic', id: 0x5e17e000, item: 'minecraft:white_dye', chunkLines: 20, span: 20, teleportDuration: 1 },
+		{ version: VERSION, rig: 'twin', id: 0x7e1a0001, item: 'minecraft:white_dye', chunkLines: 20, span: 20, teleportDuration: 1 },
+		{ version: VERSION, rig: 'thinned', id: 0x7e1a0002, item: 'minecraft:white_dye', chunkLines: 20, span: 20, teleportDuration: 1, thin: { position: 0.01, rotation: 1 } },
 	]
 
 	const world = join(SERVER_DIR, WORLD_NAME)
@@ -324,7 +333,7 @@ async function main(): Promise<void> {
 	// debug function takes no arguments, so each counted tween call gets a function of its own.
 	for (const { rig } of [rigs[0]!, rigs[2]!])
 		for (const [name, frame] of COST_CASES)
-			writeFileSync(join(world, 'datapacks/check/data/check/functions', `cost_${rig}_${name}.mcfunction`), `function rigel:${rig}/tween {ID:${source.animations.findIndex((a) => a.name === name)},ticks:5,frame:${frame}}\n`)
+			writeFileSync(join(world, 'datapacks/check/data/check', TARGET.functions, `cost_${rig}_${name}.mcfunction`), `function rigel:${rig}/tween {ID:${source.animations.findIndex((a) => a.name === name)},ticks:5,frame:${frame}}\n`)
 
 	if (shots) {
 		rmSync(shots, { recursive: true, force: true })
@@ -343,7 +352,7 @@ async function main(): Promise<void> {
 
 	const expected = expectations(source)
 	const chunks = (rig: string, tier: string) => {
-		const dir = join(world, 'datapacks', rig, 'data/rigel/functions', rig, 'warm', tier)
+		const dir = join(world, 'datapacks', rig, 'data/rigel', TARGET.functions, rig, 'warm', tier)
 		return existsSync(dir) ? readdirSync(dir).length : 0
 	}
 
@@ -374,6 +383,7 @@ async function main(): Promise<void> {
 		// the reload below loads every function again.
 		const fromLoad = server.log.length
 		server.send('tick freeze')
+		for (const command of TARGET.keepLoaded) server.send(command)
 		await server.sync()
 		const root = uuidString(rigs[0]!.id, 0)
 		const bone = (b: number) => uuidString(rigs[0]!.id, b + 1)
@@ -445,7 +455,7 @@ async function main(): Promise<void> {
 		// Every tick of every animation.
 		const animations: Record<string, number> = {}
 		const models = renderables(source).flatMap((r, i) => (r.display ? [] : [bone(i)]))
-		const base = await check.cmds(models)
+		const base = await check.modelsOf(models)
 		const writesOf = (name: string) => variantWrites(world, 'synthetic', name)
 		for (const [a, animation] of source.animations.entries()) {
 			const n = animation.ticks
@@ -462,7 +472,7 @@ async function main(): Promise<void> {
 				if (s > 0) await check.step()
 				const called = frameAt(animation.loop, n, s)
 				if (called !== undefined) variants.apply(calls.get(called))
-				const held = await check.cmds(models)
+				const held = await check.modelsOf(models)
 				for (const uuid of models) if (held[uuid] !== variants.want[uuid]) check.failures.push(`${animation.name} step ${s}: ${uuid} holds model ${held[uuid]}, expected ${variants.want[uuid]}`)
 				const t = Math.max(0, s - 1)
 				let want: number[][]
@@ -574,7 +584,7 @@ async function main(): Promise<void> {
 async function checkVariant(check: Check, source: RigSource, world: string, bone: (b: number) => string) {
 	const writes = (name: string) => variantWrites(world, 'synthetic', name)
 	const models = renderables(source).flatMap((r, i) => (r.display ? [] : [bone(i)]))
-	const cmds = () => check.cmds(models)
+	const cmds = () => check.modelsOf(models)
 	// The animations leave the variant of their last keyframe applied.
 	check.server.send('function rigel:synthetic/variant/default')
 	await check.server.sync()
@@ -588,7 +598,7 @@ async function checkVariant(check: Check, source: RigSource, world: string, bone
 		await check.server.sync()
 		const after = await cmds()
 		for (const uuid of models) {
-			const want = planned.find((w) => w.uuid === uuid)?.cmd ?? before[uuid]
+			const want = planned.find((w) => w.uuid === uuid)?.model ?? before[uuid]
 			check.expect(after[uuid] === want, `variant ${v}: ${uuid} holds ${after[uuid]}, expected ${want}`)
 		}
 		const onApply = source.variants.find((x) => x.name === v)?.onApply
@@ -626,7 +636,7 @@ async function checkDisplays(check: Check, source: RigSource, bone: (b: number) 
 		const name = source.bones[entity.index]!.name
 		const want =
 			d.kind === 'block'
-				? ['Name: "minecraft:oak_stairs"', 'facing: "east"', 'half: "top"']
+				? [`${VERSION === '1.20.4' ? 'Name' : 'id'}: "minecraft:oak_stairs"`, 'facing: "east"', 'half: "top"']
 				: d.kind === 'item'
 					? [`id: "${d.item}"`, `item_display: "${d.mode}"`]
 					: [...textParts(JSON.parse(d.text)), `shadow: ${d.shadow ? 1 : 0}b`, `line_width: ${d.lineWidth}`]
@@ -672,7 +682,7 @@ async function checkThinned(check: Check, source: RigSource, settings: RigSettin
 	check.expect((await check.result(`execute positioned 4.0 -60.0 0.0 rotated 0 0 run ${fn('spawn')}`)) !== 0, 'thinned: spawn failed')
 
 	const models = renderables(source).flatMap((r, i) => (r.display ? [] : [bone(i)]))
-	const base = await check.cmds(models)
+	const base = await check.modelsOf(models)
 	const replay = new Replay(plans, rest)
 	const { held, cooldown } = replay
 	const apply = (a: number, f: number) => replay.apply(a, f)
@@ -704,7 +714,7 @@ async function checkThinned(check: Check, source: RigSource, settings: RigSettin
 			if (s > 0) await check.step()
 			const called = frameAt(plan.loop, n, s)
 			if (called !== undefined) variants.apply(plan.calls.get(called))
-			const cmds = await check.cmds(models)
+			const cmds = await check.modelsOf(models)
 			for (const uuid of models) if (cmds[uuid] !== variants.want[uuid]) check.failures.push(`thinned ${a} step ${s}: ${uuid} holds model ${cmds[uuid]}, expected ${variants.want[uuid]}`)
 			// play wrote f/0, the first step keeps it; then one frame per step, a loop going round from f/n to f/1.
 			if (s >= 2) {
@@ -823,7 +833,7 @@ async function checkTween(check: Check, source: RigSource, settings: RigSettings
 	await check.result(`execute positioned ${spawnAt} rotated 0 0 run ${fn('spawn')}`)
 	check.server.send(fn('variant/default'))
 	await check.server.sync()
-	const variants = new VariantState(await check.cmds(models), writesOf)
+	const variants = new VariantState(await check.modelsOf(models), writesOf)
 	let state = new Replay(plans, expected.rest)
 	let shadow = 1
 	// The shadow_strength of the last tween; each one takes the other of .998 and .997, starting with .998.
@@ -842,7 +852,7 @@ async function checkTween(check: Check, source: RigSource, settings: RigSettings
 			if (got.cooldown !== state.cooldown[b]) fail(`${label} bone ${b}: PortalCooldown ${got.cooldown}, expected ${state.cooldown[b]}`)
 			if (Math.abs(got.shadow - shadow) > 1e-6) fail(`${label} bone ${b}: shadow_strength ${got.shadow}, expected ${shadow}`)
 		}
-		const cmds = await check.cmds(models)
+		const cmds = await check.modelsOf(models)
 		for (const uuid of models) if (cmds[uuid] !== variants.want[uuid]) fail(`${label}: ${uuid} holds model ${cmds[uuid]}, expected ${variants.want[uuid]}`)
 	}
 

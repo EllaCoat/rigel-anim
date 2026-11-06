@@ -7,6 +7,8 @@
 // entity; and the three displays. Each face direction has its own colour, so a mirrored
 // or turned export shows in screenshots.
 import { deflateSync } from 'node:zlib'
+import { RESOURCE_PACK } from '../src/export/resource-pack'
+import type { GameVersion } from '../src/export/target'
 
 let next = 0
 const id = () => `00000000-0000-4000-8000-${String(++next).padStart(12, '0')}`
@@ -65,7 +67,7 @@ export function syntheticFontPack(): Record<string, string | Buffer> {
 		{ type: 'space', advances: { '': -4 } },
 	]
 	return {
-		'pack.mcmeta': JSON.stringify({ pack: { pack_format: 22, description: 'synthetic font' } }),
+		'pack.mcmeta': JSON.stringify({ pack: { ...RESOURCE_PACK, description: 'synthetic font' } }),
 		'assets/check/font/icons.json': JSON.stringify({ providers }),
 		'assets/check/textures/font/icons.png': png(32, 16, (x, y) => (x < 16 ? wideGlyph(x, y) : narrowGlyph(x - 16, y))),
 	}
@@ -81,6 +83,11 @@ function group(name: string, origin: V, cube?: [V, V], children: (object | strin
 		kids.push(uuid)
 	}
 	return { name, uuid: id(), origin, rotation: [0, 0, 0], children: [...kids, ...children], ...extra }
+}
+function turnedCube(name: string, origin: V, [from, to]: [V, V], rotation: V) {
+	const uuid = id()
+	elements.push({ name, type: 'cube', uuid, from, to, origin, rotation, faces: faces() })
+	return uuid
 }
 function locator(name: string, position: V, entity = '', nbt = '') {
 	const uuid = id()
@@ -108,7 +115,7 @@ function bezier(time: number, value: V, left: V, right: V) {
 	})
 }
 
-export function syntheticRig() {
+export function syntheticRig(version: GameVersion) {
 	next = 0
 	elements.length = 0
 	const sword = display('sword', [4, 4, 0], { kind: 'item', item: 'minecraft:iron_sword', tag: '', mode: 'none', scale: [0.5, 0.5, 0.5] })
@@ -145,7 +152,9 @@ export function syntheticRig() {
 	})
 	// Behind the body, so that it hides nothing from the front.
 	const ice = display('ice', [-8, 0, -28], { kind: 'block', block: 'minecraft:oak_stairs[facing=east,half=top]' })
-	const body = group('body', [0, 8, 0], [[-3, 4, -2], [3, 12, 2]], [arm, tail, pivot, label, note, ice])
+	// 26.3 turns a cube on several axes at any angle; 1.20.4's item models cannot.
+	const fin = version === '26.3' ? [turnedCube('fin', [2, 9, 3], [[1, 8, 2], [3, 10, 4]], [20, 35, 50])] : []
+	const body = group('body', [0, 8, 0], [[-3, 4, -2], [3, 12, 2]], [...fin, arm, tail, pivot, label, note, ice])
 
 	const animation = (name: string, loop: string, length: number, animators: Record<string, object[]>, bones: Record<string, { uuid: string }>, variantKeys: object[] = []) => ({
 		uuid: id(),
@@ -173,6 +182,7 @@ export function syntheticRig() {
 	return {
 		meta: { format_version: '5.0', model_format: 'rigel', box_uv: false },
 		name: 'synthetic',
+		rigel_version: version,
 		resolution: { width: 16, height: 16 },
 		elements,
 		outliner: [body],

@@ -2,7 +2,7 @@ import { commonPack, NAMESPACE, RESERVED_RIG_NAMES, rigPack, type PassengerInput
 import { boneNbtProblems, displayNbt, displayProblems, extraNbt, normalizeId, RESOURCE_ID, snbtProblem, topLevelKeys } from './display'
 import { displayPoseString, locatorString, planEntries, planFrames, poseString } from './frames'
 import { itemModel } from './item-model'
-import { itemModelPath, mergeItemModel } from './resource-pack'
+import { isGameVersion, targetOf } from './target'
 import { animationRunEnds } from './thin'
 import type { AnimationSource, Files, RigSettings, RigSource, Tolerance } from './types'
 import { variantCalls, variantCuts } from './variant-keys'
@@ -30,6 +30,7 @@ export interface SettingsProblem {
 export function settingsFieldProblems(s: RigSettings, draft = false): SettingsProblem[] {
 	const problems: SettingsProblem[] = []
 	const add = (field: keyof RigSettings, message: string) => problems.push({ field, message })
+	if (!isGameVersion(s.version)) add('version', `書き出し先の Minecraft の版 ${String(s.version)} には書き出せません。`)
 	if (!(draft && s.rig === '')) {
 		if (!RIG_NAME.test(s.rig)) add('rig', 'リグ名には小文字・数字・_ だけを使ってください。')
 		else if (RESERVED_RIG_NAMES.includes(s.rig)) add('rig', `リグ名 ${s.rig} は共通のデータパックが使うため、使えません（${RESERVED_RIG_NAMES.join('・')}）。`)
@@ -96,13 +97,16 @@ export function uniqueName(name: string, taken: Set<string>): string {
 export interface ExportResult {
 	rigPack: Files
 	commonPack: Files
+	// Under assets/, with the shared model file (Target.sharedModelFile) when the version has one.
 	resources: Files
-	itemModel: { path: string; json: string }
 	writes: { thinned: number; full: number }
 }
 
-export function buildExport(source: RigSource, settings: RigSettings, existingItemModel: string | undefined): ExportResult {
+// existingModels: the resource pack's copy of Target.sharedModelFile, if it has one.
+export function buildExport(source: RigSource, settings: RigSettings, existingModels: string | undefined): ExportResult {
 	const problems = settingsProblems(settings)
+	if (!isGameVersion(settings.version)) throw new ExportError(problems)
+	const target = targetOf(settings.version)
 	for (const a of source.animations) if (typeof a.thin === 'object' && !validTolerance(a.thin)) problems.push(`アニメ「${a.name}」の間引きの許容誤差は、位置・向きとも 0 以上の数にしてください。`)
 	// Bones with cubes become item models; displays draw what their settings name. Both ride the root, in outliner order.
 	const renderable = source.bones.flatMap((bone, index) => (bone.display || bone.cubes.length > 0 ? [{ bone, index }] : []))
@@ -133,7 +137,7 @@ export function buildExport(source: RigSource, settings: RigSettings, existingIt
 	// The blocks atlas only takes textures under textures/block/ and textures/item/ of each namespace.
 	const textureId = (i: number) => `${NAMESPACE}:item/${settings.rig}/${textures[i]}`
 	const modelNames = new Set<string>()
-	const models = renderable.map(({ bone }) => (bone.display ? undefined : { name: uniqueName(bone.name, modelNames), ...itemModel(bone, source.textures, textureId, problems) }))
+	const models = renderable.map(({ bone }) => (bone.display ? undefined : { name: uniqueName(bone.name, modelNames), ...itemModel(bone, source.textures, textureId, target, problems) }))
 	if (problems.length > 0) throw new ExportError(problems)
 
 	const resources: Files = new Map()
@@ -161,15 +165,16 @@ export function buildExport(source: RigSource, settings: RigSettings, existingIt
 		})
 	})
 	const modelPaths = [...models.flatMap((m) => (m ? [m.name] : [])), ...variantModels.flat().filter((p): p is string => p !== undefined)]
-	const merged = mergeItemModel(existingItemModel, settings.item, settings.rig, modelPaths.map(modelId))
-	const cmdOf = new Map(modelPaths.map((p, i) => [p, merged.cmds[i]!]))
+	const named = target.models(settings.item, settings.rig, modelPaths.map(modelId), existingModels)
+	for (const [path, content] of named.files) resources.set(path, content)
+	const modelOf = new Map(modelPaths.map((p, i) => [p, named.names[i]!]))
 
 	const passengers: PassengerInput[] = renderable.map(({ bone, index }, r) => {
 		const m = models[r]
 		const rest = m ? poseString(source.rest, index * 16, m.scale) : displayPoseString(source.rest, index * 16, bone.display!.scale)
-		if (!m) return { nbt: displayNbt(bone.display!), name: displayNames[r], rest }
+		if (!m) return { nbt: displayNbt(bone.display!, target), name: displayNames[r], rest }
 		const extra = extraNbt(bone.nbt ?? '')
-		return { nbt: `id:"minecraft:item_display",item:{id:"${settings.item}",Count:1b,tag:{CustomModelData:${cmdOf.get(m.name)}}}${extra ? `,${extra}` : ''}`, rest }
+		return { nbt: `id:"minecraft:item_display",item:${target.boneItem(settings.item, modelOf.get(m.name)!)}${extra ? `,${extra}` : ''}`, rest }
 	})
 	// Bones some variant changes; a variant writes all of them it does not exclude, so applying it undoes the others there.
 	const changed = renderable.flatMap((_, r) => (variantModels.some((vm) => vm[r] !== undefined) ? [r] : []))
@@ -177,10 +182,10 @@ export function buildExport(source: RigSource, settings: RigSettings, existingIt
 	const variants: VariantInput[] = !usesVariants ? [] : [
 		...source.variants.map((v, k) => ({
 			name: v.name,
-			writes: changed.filter((r) => !v.excluded.includes(renderable[r]!.index)).map((r) => ({ passenger: r, cmd: cmdOf.get(variantModels[k]![r] ?? models[r]!.name)! })),
+			writes: changed.filter((r) => !v.excluded.includes(renderable[r]!.index)).map((r) => ({ passenger: r, model: modelOf.get(variantModels[k]![r] ?? models[r]!.name)! })),
 			onApply: v.onApply,
 		})),
-		{ name: DEFAULT_VARIANT, writes: changed.map((r) => ({ passenger: r, cmd: cmdOf.get(models[r]!.name)! })), onApply: '' },
+		{ name: DEFAULT_VARIANT, writes: changed.map((r) => ({ passenger: r, model: modelOf.get(models[r]!.name)! })), onApply: '' },
 	]
 
 	const rewritten = (name: string) => new Set(variants.find((v) => v.name === name)?.writes.map((w) => w.passenger))
@@ -210,7 +215,9 @@ export function buildExport(source: RigSource, settings: RigSettings, existingIt
 	})
 	return {
 		rigPack: rigPack({
+			target,
 			rig: settings.rig,
+			item: settings.item,
 			id: settings.id,
 			chunkLines: settings.chunkLines,
 			teleportDuration: settings.teleportDuration,
@@ -223,9 +230,8 @@ export function buildExport(source: RigSource, settings: RigSettings, existingIt
 			variants,
 			animations,
 		}),
-		commonPack: commonPack(),
+		commonPack: commonPack(target),
 		resources,
-		itemModel: { path: itemModelPath(settings.item), json: merged.json },
 		writes,
 	}
 }

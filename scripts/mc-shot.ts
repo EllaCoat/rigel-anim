@@ -65,7 +65,7 @@ async function shoot(spec: Spec, specDir: string, out: string, poses: string[][]
 		await sleep(JOIN_SETTLE_MS)
 		await client.press(KEY_F1)
 		const files: string[] = []
-		const gametime = async () => Number((await server.run('time query gametime', /The time is (\d+)/))[1])
+		const gametime = async () => Number((await server.run('time query gametime', /The (?:game )?time is (\d+)/))[1])
 		for (const [i, view] of spec.views.entries()) {
 			const from = server.log.length
 			for (const command of poses[i]!) {
